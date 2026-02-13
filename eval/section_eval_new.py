@@ -1,8 +1,3 @@
-# hybrid heuristic + LLM pipeline designed to generalize across diverse formatting styles
-
-# note from 02/13: I made a lot of progress on this yesterday at work but haven't transferred the version over here yet, so it's not performing incredibly at the moment 
-# will try to set up github on my work laptop today and directly push updates!
-
 import streamlit as st
 import json
 import tempfile
@@ -23,7 +18,7 @@ class SectionEvaluator:
     """
 
     # Allowed score keys (closed schema)
-    ALLOWED_SCORE_KEYS = ("clarity", "depth", "relevance", "technical_accuracy")
+    ALLOWED_SCORE_KEYS = ("clarity", "depth", "relevance", "technical_accuracy") # too many: remove clarity? 
     CACHE_PREFIX = "se_cache_v2"
 
     DEFAULT_SECTIONS = [
@@ -148,208 +143,6 @@ class SectionEvaluator:
         return "".join(text_parts).strip()
 
     # --------------------
-    # Section detection (hybrid: heuristic + LLM)
-    # --------------------
-    def _heuristic_candidate_headers(self, text: str) -> List[Dict[str, Any]]:
-        """
-        Score each line in the paper as a potential section header using
-        structural heuristics. Returns a list of candidate dicts sorted by
-        position, each with keys: text, line_idx, score.
-        """
-        lines = text.splitlines()
-        candidates = []
-
-        # Patterns to SKIP (captions, footnotes, equations, etc.)
-        # Allow optional space/digit after keyword (PDFs often strip spaces: "Figure1:")
-        skip_re = re.compile(
-            r"^\s*(?:figure|fig\.|table|source|note|notes|algorithm|listing|exhibit|scheme|panel)[\s\d.:)]",
-            re.IGNORECASE,
-        )
-        # Math/equation artifacts: lines with +, =, ×, ≤, etc. or variable-like tokens
-        math_re = re.compile(
-            r"[+=%×≤≥∑∏∫≈∈∀∃←→]"  # math operators/symbols
-            r"|^\s*\d+\s*:"           # numbered pseudocode lines like "10: endwhile"
-            r"|\b(?:endwhile|endif|endfor|return)\b"  # pseudocode keywords
-        )
-        # Roman numeral prefix pattern
-        roman_re = re.compile(
-            r"^\s*(?:I{1,3}|IV|VI{0,3}|IX|X{0,3})[\.\):\s]",
-            re.IGNORECASE,
-        )
-        # Numbered prefix pattern (e.g. "1.", "2.1", "A.")
-        numbered_re = re.compile(r"^\s*(?:\d+[\.\):]|\d+\.\d+[\.\):]?|[A-D][\.\)])\s")
-
-        for idx, raw_line in enumerate(lines):
-            line = raw_line.strip()
-            if not line:
-                continue
-
-            word_count = len(line.split())
-
-            # Must be short enough to be a header
-            if len(line) > 80 or word_count > 12:
-                continue
-            # Must have at least TWO characters and at least 2 alpha chars
-            # (filters out single-letter PDF artifacts like "T", "S")
-            if len(line) < 3 or sum(c.isalpha() for c in line) < 2:
-                continue
-            # Skip captions / footnotes
-            if skip_re.match(line):
-                continue
-            # Skip math/equation fragments and pseudocode
-            if math_re.search(line):
-                continue
-            # Skip lines with long no-space words (PDF glued text like "Payoffswerepaidout.")
-            # A real header word shouldn't exceed ~18 chars without spaces
-            if any(len(word) > 18 for word in line.split()):
-                continue
-
-            score = 0
-
-            # --- Formatting signals ---
-            if line.isupper() and word_count >= 2:
-                score += 3  # ALL CAPS is a strong header signal (require 2+ words)
-            elif line.istitle() and word_count >= 2:
-                score += 1
-
-            # --- Numbering signals ---
-            if numbered_re.match(line):
-                score += 2
-            if roman_re.match(line):
-                score += 2
-
-            # --- Length signals (only reward if there's actual content) ---
-            if 2 <= word_count <= 5:
-                score += 1
-            if 2 <= word_count <= 3:
-                score += 1
-
-            # --- Context: followed by a longer paragraph ---
-            next_nonempty = ""
-            for j in range(idx + 1, min(idx + 4, len(lines))):
-                if lines[j].strip():
-                    next_nonempty = lines[j].strip()
-                    break
-            if next_nonempty and len(next_nonempty) > 2 * len(line):
-                score += 1
-
-            # --- Context: preceded by a blank line ---
-            if idx > 0 and not lines[idx - 1].strip():
-                score += 1
-
-            if score >= 3:
-                candidates.append({
-                    "text": line,
-                    "line_idx": idx,
-                    "score": score,
-                })
-
-        return candidates
-
-    def detect_sections(self, text: str) -> List[Dict[str, str]]:
-        """
-        Detect section headers in a paper using heuristics + LLM confirmation.
-        Returns a list of dicts: [{"text": "3. Empirical Strategy", "type": "methodology"}, ...]
-        """
-        candidates = self._heuristic_candidate_headers(text)
-
-        if not candidates:
-            # Nothing found heuristically — ask LLM to detect from raw text
-            return self._llm_detect_sections_raw(text)
-
-        # Build numbered candidate list for the LLM
-        candidate_list = "\n".join(
-            f'{i+1}. "{c["text"]}"'
-            for i, c in enumerate(candidates[:40])  # cap at 40 to limit prompt size
-        )
-
-        prompt = f"""You are analyzing an economics research paper to identify its section headers.
-
-Below are candidate lines extracted from the paper based on formatting cues.
-Determine which ones are genuine **main section headers** (not sub-headers, figure captions, author names, or table titles).
-
-For each genuine header, classify its type from this list:
-abstract, introduction, literature_review, theory, methodology, data, results, discussion, robustness, conclusion, references, appendix, other
-
-Candidates:
-{candidate_list}
-
-First ~600 characters of the paper for context:
-{text[:600]}
-
-Return ONLY a JSON array. Each element should have:
-
-- "index": the candidate number (1-based)
-- "is_header": true or false
-- "type": one of the types above (only if is_header is true)
-
-Example: [{{"index": 1, "is_header": true, "type": "introduction"}}, {{"index": 2, "is_header": false}}]
-Return valid JSON only, no other text."""
-
-        resp = self._safe_query(prompt, max_chars=8000)
-        parsed = self._parse_json_from_text(resp)
-
-        detected = []
-        if isinstance(parsed, list):
-            for item in parsed:
-                if not isinstance(item, dict):
-                    continue
-                if item.get("is_header") is True:
-                    idx_1based = item.get("index")
-                    if isinstance(idx_1based, int) and 1 <= idx_1based <= len(candidates):
-                        cand = candidates[idx_1based - 1]
-                        detected.append({
-                            "text": cand["text"],
-                            "type": item.get("type", "other"),
-                            "line_idx": cand["line_idx"],
-                        })
-
-        # If LLM classification returned too few, fall back to top heuristic candidates
-        if len(detected) < 2:
-            return self._fallback_from_heuristics(candidates)
-
-        # Sort by document order
-        detected.sort(key=lambda d: d["line_idx"])
-        return detected
-
-    def _llm_detect_sections_raw(self, text: str) -> List[Dict[str, str]]:
-        """Fallback: ask LLM to identify sections directly from paper text."""
-        prompt = f"""You are analyzing an economics research paper. Identify ALL main section headers
-
-present in the paper text below. Return a JSON array where each element has:
-
-- "text": the exact section header as it appears in the paper
-- "type": one of: abstract, introduction, literature_review, theory, methodology, data, results, discussion, robustness, conclusion, references, appendix, other
-
-Paper text (first 8000 chars):
-{text[:8000]}
-
-Return valid JSON only, no other text."""
-
-        resp = self._safe_query(prompt, max_chars=10000)
-        parsed = self._parse_json_from_text(resp)
-
-        if isinstance(parsed, list) and len(parsed) >= 2:
-            return [
-                {"text": str(item.get("text", "")), "type": str(item.get("type", "other"))}
-                for item in parsed
-                if isinstance(item, dict) and item.get("text")
-            ]
-
-        # Ultimate fallback: return DEFAULT_SECTIONS as suggestions
-        return [{"text": s, "type": "suggestion"} for s in self.DEFAULT_SECTIONS]
-
-    def _fallback_from_heuristics(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, str]]:
-        """Use top-scoring heuristic candidates when LLM classification fails."""
-        sorted_cands = sorted(candidates, key=lambda c: c["line_idx"])
-        result = []
-        for c in sorted_cands:
-            result.append({"text": c["text"], "type": "other"})
-        if not result:
-            return [{"text": s, "type": "suggestion"} for s in self.DEFAULT_SECTIONS]
-        return result
-
-    # --------------------
     # Section extraction
     # --------------------
     def extract_sections_from_text(self, text: str, desired_sections: Optional[List[str]] = None) -> Dict[str, str]:
@@ -357,32 +150,8 @@ Return valid JSON only, no other text."""
         Try deterministic header-based segmentation first. If result is sparse,
         ask the LLM to segment the text into the requested sections and return JSON.
         Returns a dict of section_name -> section_text.
-
-        desired_sections can be either:
-          - Simple names: ["Introduction", "Methodology"]
-          - Exact header text from detect_sections(): ["3. Empirical Strategy", "IV. Data"]
         """
-        desired_sections = desired_sections or self.DEFAULT_SECTIONS
-
-        # Build matching patterns: for each desired section, try to match either
-        # the exact header text or the core words (stripping numbering prefixes).
-        def _build_pattern(sec: str) -> re.Pattern:
-            # Strip leading numbering like "3.", "IV.", "A)" etc.
-            core = re.sub(r"^\s*(?:\d+[\.\):]?\s*|[IVXivx]+[\.\):]?\s*|[A-D][\.\)]\s*)", "", sec).strip()
-            if not core:
-                core = sec.strip()
-            # Escape for regex and match the core text as a whole phrase
-            escaped = re.escape(core)
-            # Also match the first significant word for fuzzy matching
-            first_word = core.split('/')[0].split()[0] if core.split() else core
-            first_escaped = re.escape(first_word)
-            # Match either the full phrase or at least the first keyword
-            return re.compile(
-                rf"(?:{escaped}|\b{first_escaped}\b)",
-                re.IGNORECASE,
-            )
-
-        patterns = [(sec, _build_pattern(sec)) for sec in desired_sections]
+        desired_sections = desired_sections # or self.DEFAULT_SECTIONS # CHANGE THIS: change default sections 
 
         # Attempt lightweight deterministic segmentation by detecting header-like lines
         lines = text.splitlines()
@@ -391,10 +160,11 @@ Return valid JSON only, no other text."""
 
         for line in lines:
             stripped = line.strip()
-            # short line likely a header; check if it matches any desired section
+            # short line likely a header; check if it matches any desired section (case-insensitive, fuzzy)
             if 0 < len(stripped) <= 120:
-                for sec, pat in patterns:
-                    if pat.search(stripped):
+                for sec in desired_sections:
+                    # match either exact words or beginnings like "1. Introduction"
+                    if re.search(r'\b' + re.escape(sec.split('/')[0].split()[0]) + r'\b', stripped, flags=re.IGNORECASE):
                         # start new section
                         current = sec
                         found.setdefault(current, [])
@@ -411,7 +181,6 @@ Return valid JSON only, no other text."""
 
         # Otherwise ask LLM to segment into JSON
         prompt = f"""
-
 You are an assistant that extracts main sections from an academic economics paper.
 Given the paper text below, split it into the following section names if present (use exactly these names as keys):
 {desired_sections}
@@ -425,6 +194,7 @@ PAPER TEXT:
         resp = self._safe_query(prompt, max_chars=120000)
         parsed = self._parse_json_from_text(resp)
         if isinstance(parsed, dict) and parsed:
+            # ensure text values and trim excessively large outputs
             cleaned = {k: (v.strip()[:200000] if isinstance(v, str) else "") for k, v in parsed.items() if isinstance(v, str) and v.strip()}
             if cleaned:
                 return cleaned
@@ -451,9 +221,7 @@ PAPER TEXT:
 
         # PASS 1: qualitative
         qual_prompt = f"""
-
 You are a senior reviewer for top economics journals. Read the following section titled "{section_name}" and provide a concise qualitative assessment (2-6 sentences) that covers:
-
 - The section's purpose,
 - 1?2 main strengths,
 - 1?2 main shortcomings or missing elements,
@@ -466,9 +234,7 @@ SECTION TEXT:
 
         # PASS 2: structured extraction (strict JSON)
         struct_prompt = f"""
-
 Based ONLY on the qualitative assessment below, output EXACTLY one JSON object with keys:
-
 - "strengths": array of up to 3 short phrases (strings)
 - "weaknesses": array of up to 3 short phrases (strings)
 - "improvements": array of up to 4 short actionable phrases (strings)
@@ -502,7 +268,6 @@ QUALITATIVE:
 
         # PASS 3: scoring - ask LLM to output ONLY the allowed score keys in JSON
         score_prompt = f"""
-
 Based only on the qualitative assessment and the structured lists below, assign integer scores 1-5 for the following keys:
 {list(self.ALLOWED_SCORE_KEYS)}
 
@@ -592,30 +357,25 @@ STRUCTURED:
             lines.append(f"{name}: overall={sc.get('overall')}, clarity={sc.get('clarity')}, depth={sc.get('depth')}")
 
         prompt = f"""
-
 You are an experienced editor for top economics journals. Based on the per-section score summary below,
 produce the following EXACT format:
 
 ## Key Strengths
-
 1.
 2.
 3.
 
 ## Key Weaknesses
-
 1.
 2.
 3.
 
 ## Priority Improvements
-
 1.
 2.
 3.
 
 ## Publication Readiness
-
 [One of: Not ready, Needs major revisions, Needs minor revisions, Ready] - one sentence justification.
 
 Per-section summary:
@@ -628,7 +388,7 @@ Per-section summary:
     # --------------------
     def render_ui(self, files: Optional[Dict[str, bytes]] = None):
         st.subheader("Manuscript Section Evaluation (v2)")
-        st.write("Upload a paper, scan for sections, then choose which ones to evaluate.")
+        st.write("Two-pass evaluation (qualitative ? structured) and strict scoring schema. See concise recommendations first; expand for full detail.")
 
         if not files:
             st.info("Upload a PDF using the main uploader to begin.")
@@ -640,128 +400,47 @@ Per-section summary:
             st.info("Select a file to proceed.")
             return
 
-        # ---- Phase 1: Scan for sections ----
-        scan_state_key = f"se_v2_detected_{manuscript}"
+        # choose sections (checkboxes)
+        st.write("Select sections to evaluate (defaults on).")
+        chosen_sections = []
+        for s in self.DEFAULT_SECTIONS:
+            if st.checkbox(s, value=True, key=f"se_v2_chk_{s}"):
+                chosen_sections.append(s)
 
-        if st.button("Scan for Sections", key=f"se_v2_scan_{manuscript}"):
+        if st.button("Evaluate Manuscript (Sections)", key=f"se_v2_run_{manuscript}"):
             file_bytes = files[manuscript]
-            with st.spinner("Extracting text from PDF..."):
+            with st.spinner("Extracting text..."):
                 paper_text = self.extract_text_from_pdf(file_bytes)
-            with st.spinner("Detecting section headers..."):
-                detected = self.detect_sections(paper_text)
-            # Store detected sections and extracted text in session state
-            st.session_state[scan_state_key] = detected
-            st.session_state[f"se_v2_text_{manuscript}"] = paper_text
-            st.success(f"Found {len(detected)} section(s).")
-
-        # ---- Phase 2: Show detected sections with merge controls ----
-        detected = st.session_state.get(scan_state_key)
-
-        if detected:
-            is_suggestion = all(d.get("type") == "suggestion" for d in detected)
-            if is_suggestion:
-                st.info("Could not auto-detect sections. Showing default suggestions -- feel free to edit.")
+                seg_hash = self._hash_text(paper_text + "|" + ",".join(chosen_sections))
+            seg_cache_key = f"seg_{seg_hash}"
+            cache = st.session_state[self.cache_prefix]
+            if seg_cache_key in cache:
+                sections = cache[seg_cache_key]
             else:
-                st.write("Detected sections — for each, choose to **keep**, **remove**, or **merge into** another section:")
+                with st.spinner("Segmenting sections (LLM fallback)..."):
+                    sections = self.extract_sections_from_text(paper_text, chosen_sections)
+                cache[seg_cache_key] = sections
 
-            section_names = [sec["text"] for sec in detected]
+            # Evaluate each section
+            evaluations = {}
+            total = len(sections)
+            prog = st.progress(0)
+            status = st.empty()
+            for i, (sec_name, sec_text) in enumerate(sections.items(), start=1):
+                status.text(f"Evaluating {sec_name} ({i}/{total})")
+                evaluations[sec_name] = self.evaluate_section(sec_name, sec_text)
+                prog.progress(i / max(1, total))
+            status.text("Generating overall assessment...")
+            overall = self.generate_overall_assessment(sections, evaluations)
+            status.text("Done.")
 
-            # For each detected section, show a selectbox: Keep / Remove / Merge into <other>
-            actions = {}  # sec_text -> "keep" | "remove" | target_sec_text
-            for i, sec in enumerate(detected):
-                sec_text = sec["text"]
-                sec_type = sec.get("type", "")
-                display_label = f"{sec_text}  ({sec_type})" if sec_type and sec_type not in ("other", "suggestion") else sec_text
-
-                # Build options: Keep, Remove, Merge into each other section
-                merge_targets = [f"Merge into: {s}" for s in section_names if s != sec_text]
-                options = ["Keep", "Remove"] + merge_targets
-
-                col1, col2 = st.columns([3, 2])
-                with col1:
-                    st.markdown(f"**{display_label}**")
-                with col2:
-                    choice = st.selectbox(
-                        "Action",
-                        options=options,
-                        index=0,
-                        key=f"se_v2_action_{manuscript}_{i}",
-                        label_visibility="collapsed",
-                    )
-
-                if choice == "Keep":
-                    actions[sec_text] = "keep"
-                elif choice == "Remove":
-                    actions[sec_text] = "remove"
-                elif choice.startswith("Merge into: "):
-                    target = choice[len("Merge into: "):]
-                    actions[sec_text] = target
-
-            # ---- Phase 3: Evaluate selected sections ----
-            if st.button("Evaluate Selected Sections", key=f"se_v2_run_{manuscript}"):
-                # Build final section list: resolve merges
-                # kept sections are the primary ones; merged sections get their text appended
-                kept = [s for s, a in actions.items() if a == "keep"]
-                merges = {s: a for s, a in actions.items() if a not in ("keep", "remove")}
-
-                if not kept:
-                    st.warning("Please keep at least one section to evaluate.")
-                    return
-
-                paper_text = st.session_state.get(f"se_v2_text_{manuscript}", "")
-                if not paper_text:
-                    file_bytes = files[manuscript]
-                    with st.spinner("Extracting text..."):
-                        paper_text = self.extract_text_from_pdf(file_bytes)
-
-                # Extract text for ALL sections (kept + merge sources) so we can combine
-                all_needed = list(set(kept + list(merges.keys())))
-                seg_hash = self._hash_text(paper_text + "|" + ",".join(sorted(all_needed)))
-                seg_cache_key = f"seg_{seg_hash}"
-                cache = st.session_state[self.cache_prefix]
-                if seg_cache_key in cache:
-                    raw_sections = cache[seg_cache_key]
-                else:
-                    with st.spinner("Extracting section text..."):
-                        raw_sections = self.extract_sections_from_text(paper_text, all_needed)
-                    cache[seg_cache_key] = raw_sections
-
-                # Apply merges: append merged section text to target section
-                sections = {}
-                for sec_name in kept:
-                    sections[sec_name] = raw_sections.get(sec_name, "")
-                for src, target in merges.items():
-                    if target in sections:
-                        src_text = raw_sections.get(src, "")
-                        if src_text:
-                            sections[target] = sections[target] + "\n\n" + src_text
-
-                if not sections:
-                    st.warning("No section text could be extracted.")
-                    return
-
-                # Evaluate each section
-                evaluations = {}
-                total = len(sections)
-                prog = st.progress(0)
-                status = st.empty()
-                for i, (sec_name, sec_text) in enumerate(sections.items(), start=1):
-                    status.text(f"Evaluating {sec_name} ({i}/{total})")
-                    evaluations[sec_name] = self.evaluate_section(sec_name, sec_text)
-                    prog.progress(i / max(1, total))
-                status.text("Generating overall assessment...")
-                overall = self.generate_overall_assessment(sections, evaluations)
-                status.text("Done.")
-
-                # store results for UI and download
-                st.session_state.setdefault("se_v2_last", {})
-                st.session_state["se_v2_last"]["manuscript"] = manuscript
-                st.session_state["se_v2_last"]["sections"] = sections
-                st.session_state["se_v2_last"]["evaluations"] = evaluations
-                st.session_state["se_v2_last"]["overall"] = overall
-                st.success("Evaluation complete.")
-        else:
-            st.info("Click **Scan for Sections** to detect the paper's structure before evaluating.")
+            # store results for UI and download
+            st.session_state.setdefault("se_v2_last", {})
+            st.session_state["se_v2_last"]["manuscript"] = manuscript
+            st.session_state["se_v2_last"]["sections"] = sections
+            st.session_state["se_v2_last"]["evaluations"] = evaluations
+            st.session_state["se_v2_last"]["overall"] = overall
+            st.success("Evaluation complete.")
 
         # Display last results if present
         if "se_v2_last" in st.session_state:
