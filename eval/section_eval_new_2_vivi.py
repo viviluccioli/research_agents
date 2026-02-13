@@ -1,5 +1,8 @@
 # hybrid heuristic + LLM pipeline designed to generalize across diverse formatting styles
 
+# note from 02/13: I made a lot of progress on this yesterday at work but haven't transferred the version over here yet, so it's not performing incredibly at the moment 
+# will try to set up github on my work laptop today and directly push updates!
+
 import streamlit as st
 import json
 import tempfile

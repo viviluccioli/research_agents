@@ -1,7 +1,7 @@
 # app.py - Evaluation Agent with tabbed workflows
 import streamlit as st
 from referee import RefereeReportChecker
-from section_eval_new import SectionEvaluator
+from section_eval_new_2_vivi import SectionEvaluator
 from utils import cm
 
 WORKFLOWS = {

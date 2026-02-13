@@ -10,22 +10,54 @@ import sys
 import importlib
 import pandas as pd
 import csv
-import time 
-import tiktoken 
-import math 
-from typing import List, Dict, Any 
-from collections import deque 
+import time
+import tiktoken
+import math
+from typing import List, Dict, Any
+from collections import deque
 from pathlib import Path
 import logging
 import pdfplumber
+from dotenv import load_dotenv
 
-# API Configuration
-API_KEY = "" # API key
-API_BASE = ""  # API endpoint
+load_dotenv()
+
+# API Configuration — supports OpenAI, Anthropic, and Google Gemini.
+# Set LLM_PROVIDER in .env to "openai", "anthropic", or "gemini".
+# Each provider needs its own API key env var; base URL and models have sensible defaults.
+_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
+
+_PROVIDER_DEFAULTS = {
+    "openai": {
+        "key_env": "OPENAI_API_KEY",
+        "base": "https://api.openai.com/v1",
+        "fast": "gpt-4o-mini",
+        "general": "gpt-4o",
+        "strong": "gpt-4.1",
+    },
+    "anthropic": {
+        "key_env": "ANTHROPIC_API_KEY",
+        "base": "https://api.anthropic.com/v1",
+        "fast": "claude-haiku-4-5-20251001",
+        "general": "claude-sonnet-4-5-20250929",
+        "strong": "claude-opus-4-6",
+    },
+    "gemini": {
+        "key_env": "GEMINI_API_KEY",
+        "base": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "fast": "gemini-2.0-flash-lite",
+        "general": "gemini-2.0-flash",
+        "strong": "gemini-2.5-pro-preview-06-05",
+    },
+}
+
+_defaults = _PROVIDER_DEFAULTS.get(_PROVIDER, _PROVIDER_DEFAULTS["openai"])
+API_KEY = os.getenv(_defaults["key_env"], "")
+API_BASE = os.getenv("LLM_API_BASE", _defaults["base"])
 url_chat_completions = f"{API_BASE}/chat/completions"
-model_selection = ""        # fast + cheap
-model_selection2 = ""            # strong general model
-model_selection3 = ""           # stronger reasoning
+model_selection = os.getenv("MODEL_FAST", _defaults["fast"])
+model_selection2 = os.getenv("MODEL_GENERAL", _defaults["general"])
+model_selection3 = os.getenv("MODEL_STRONG", _defaults["strong"])
 
 
 def single_query(prompt: str, debug_flag=False, retries=3) -> str: 
