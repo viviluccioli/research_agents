@@ -11,9 +11,13 @@ import pdfplumber
 from utils import cm, single_query
 
 class SectionEvaluator:
-"""
-Robust SectionEvaluator: - Two-pass evaluation: qualitative -> structured (strengths, weaknesses, improvements) -> scoring - Strict score schema and filtering (no ad-hoc extraction) - LLM fallback and robust JSON parsing - Caching in st.session_state
-"""
+    """
+    Robust SectionEvaluator:
+    - Two-pass evaluation: qualitative -> structured (strengths, weaknesses, improvements) -> scoring
+    - Strict score schema and filtering (no ad-hoc extraction)
+    - LLM fallback and robust JSON parsing
+    - Caching in st.session_state
+    """
 
     # Allowed score keys (closed schema)
     ALLOWED_SCORE_KEYS = ("clarity", "depth", "relevance", "technical_accuracy")
@@ -415,12 +419,12 @@ If a section is not present, omit it. Keep values strictly to the section text o
 PAPER TEXT:
 {text[:120000]}
 """
-resp = self.\_safe_query(prompt, max_chars=120000)
-parsed = self.\_parse_json_from_text(resp)
-if isinstance(parsed, dict) and parsed: # ensure text values and trim excessively large outputs
-cleaned = {k: (v.strip()[:200000] if isinstance(v, str) else "") for k, v in parsed.items() if isinstance(v, str) and v.strip()}
-if cleaned:
-return cleaned
+        resp = self._safe_query(prompt, max_chars=120000)
+        parsed = self._parse_json_from_text(resp)
+        if isinstance(parsed, dict) and parsed:
+            cleaned = {k: (v.strip()[:200000] if isinstance(v, str) else "") for k, v in parsed.items() if isinstance(v, str) and v.strip()}
+            if cleaned:
+                return cleaned
 
         # fallback: return whole document as "Full Text"
         return {"Full Text": text}
@@ -455,7 +459,7 @@ You are a senior reviewer for top economics journals. Read the following section
 SECTION TEXT:
 {section_text[:12000]}
 """
-qualitative = self.\_safe_query(qual_prompt, max_chars=12000)
+        qualitative = self._safe_query(qual_prompt, max_chars=12000)
 
         # PASS 2: structured extraction (strict JSON)
         struct_prompt = f"""
@@ -471,8 +475,8 @@ Do not include any other keys, text, or commentary. Return valid JSON only.
 QUALITATIVE:
 {qualitative}
 """
-structured_raw = self.\_safe_query(struct_prompt, max_chars=4000)
-structured = self.\_parse_json_from_text(structured_raw)
+        structured_raw = self._safe_query(struct_prompt, max_chars=4000)
+        structured = self._parse_json_from_text(structured_raw)
 
         strengths, weaknesses, improvements = [], [], []
         if isinstance(structured, dict):
@@ -508,8 +512,8 @@ QUALITATIVE:
 STRUCTURED:
 {json.dumps({'strengths': strengths, 'weaknesses': weaknesses, 'improvements': improvements})}
 """
-score_raw = self.\_safe_query(score_prompt, max_chars=3000)
-score_obj = self.\_parse_json_from_text(score_raw)
+        score_raw = self._safe_query(score_prompt, max_chars=3000)
+        score_obj = self._parse_json_from_text(score_raw)
 
         scores: Dict[str, int] = {}
         if isinstance(score_obj, dict):
@@ -614,7 +618,7 @@ produce the following EXACT format:
 Per-section summary:
 {chr(10).join(lines)}
 """
-return self.\_safe_query(prompt, max_chars=4000)
+        return self._safe_query(prompt, max_chars=4000)
 
     # --------------------
     # Streamlit UI

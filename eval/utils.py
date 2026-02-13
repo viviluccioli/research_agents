@@ -20,12 +20,12 @@ import logging
 import pdfplumber
 
 # API Configuration
-API_KEY = "REDACTED_KEY" # API key
+API_KEY = "" # API key
 API_BASE = ""  # API endpoint
 url_chat_completions = f"{API_BASE}/chat/completions"
-model_selection = "gpt-4o-mini"        # fast + cheap
-model_selection2 = "gpt-4o"            # strong general model
-model_selection3 = "gpt-4.1"           # stronger reasoning
+model_selection = ""        # fast + cheap
+model_selection2 = ""            # strong general model
+model_selection3 = ""           # stronger reasoning
 
 
 def single_query(prompt: str, debug_flag=False, retries=3) -> str: 
