@@ -498,14 +498,39 @@ Return valid JSON only, no other text."""
         parsed = self._parse_json_from_text(resp)
 
         if isinstance(parsed, list) and len(parsed) >= 2:
-            return [
-                {"text": str(item.get("text", "")), "type": str(item.get("type", "other")), "line_idx": 0}
-                for item in parsed
-                if isinstance(item, dict) and item.get("text")
-            ]
+            results = []
+            lines = text.splitlines()
+            for item in parsed:
+                if not isinstance(item, dict) or not item.get("text"):
+                    continue
+                header_text = str(item["text"])
+                # Find the actual line index in the document
+                line_idx = self._find_header_line_idx(lines, header_text)
+                results.append({
+                    "text": header_text,
+                    "type": str(item.get("type", "other")),
+                    "line_idx": line_idx,
+                })
+            if results:
+                return results
 
         # Ultimate fallback: return DEFAULT_SECTIONS as suggestions
         return [{"text": s, "type": "suggestion", "line_idx": i} for i, s in enumerate(self.DEFAULT_SECTIONS)]
+
+    @staticmethod
+    def _find_header_line_idx(lines: List[str], header_text: str) -> int:
+        """Find the line index of a header in the document text. Returns 0 if not found."""
+        header_stripped = header_text.strip().lower()
+        # Try exact match first
+        for idx, line in enumerate(lines):
+            if line.strip().lower() == header_stripped:
+                return idx
+        # Try substring match on short lines (likely headers)
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            if 0 < len(stripped) <= 120 and header_stripped in stripped.lower():
+                return idx
+        return 0
 
     def _fallback_from_heuristics(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         """Use top-scoring heuristic candidates when LLM classification fails."""
@@ -533,85 +558,108 @@ Return valid JSON only, no other text."""
     # --------------------
     # Section extraction
     # --------------------
+    @staticmethod
+    def _find_references_start(lines: List[str]) -> Optional[int]:
+        """
+        Scan lines to find where References, Bibliography, or Appendix begins.
+        Returns the line index of the first such header, or None if not found.
+        """
+        ref_re = re.compile(
+            r"^\s*(?:\d+[\.\):]?\s*)?(?:references|bibliography|works\s+cited|appendix|appendices)\s*$",
+            re.IGNORECASE,
+        )
+        for idx, line in enumerate(lines):
+            if ref_re.match(line.strip()):
+                return idx
+        return None
+
     def extract_sections_from_text(self, text: str, desired_sections: Optional[List[str]] = None) -> Dict[str, str]:
         """
-        Try deterministic header-based segmentation first. If result is sparse,
-        ask the LLM to segment the text into the requested sections and return JSON.
-        Returns a dict of section_name -> section_text.
+        Extract section text by slicing the document between detected header positions.
+        Uses line_idx from detect_sections() stored in session state to find exact
+        header locations, then grabs all text from one header to the next.
 
-        desired_sections can be either:
-          - Simple names: ["Introduction", "Methodology"]
-          - Exact header text from detect_sections(): ["3. Empirical Strategy", "IV. Data"]
+        Returns a dict of section_name -> section_text.
         """
         desired_sections = desired_sections or self.DEFAULT_SECTIONS
-
-        # Build matching patterns: for each desired section, try to match either
-        # the exact header text or the core words (stripping numbering prefixes).
-        def _build_pattern(sec: str) -> re.Pattern:
-            # Strip leading numbering like "3.", "IV.", "A)" etc.
-            core = re.sub(r"^\s*(?:\d+[\.\):]?\s*|[IVXivx]+[\.\):]?\s*|[A-D][\.\)]\s*)", "", sec).strip()
-            if not core:
-                core = sec.strip()
-            # Escape for regex and match the core text as a whole phrase
-            escaped = re.escape(core)
-            # Also match the first significant word for fuzzy matching
-            first_word = core.split('/')[0].split()[0] if core.split() else core
-            first_escaped = re.escape(first_word)
-            # Match either the full phrase or at least the first keyword
-            return re.compile(
-                rf"(?:{escaped}|\b{first_escaped}\b)",
-                re.IGNORECASE,
-            )
-
-        patterns = [(sec, _build_pattern(sec)) for sec in desired_sections]
-
-        # Attempt lightweight deterministic segmentation by detecting header-like lines
         lines = text.splitlines()
-        found: Dict[str, List[str]] = {}
-        current: Optional[str] = None
 
-        for line in lines:
-            stripped = line.strip()
-            # short line likely a header; check if it matches any desired section
-            if 0 < len(stripped) <= 120:
-                for sec, pat in patterns:
-                    if pat.search(stripped):
-                        # start new section
-                        current = sec
-                        found.setdefault(current, [])
-                        break
-            if current:
-                found[current].append(line)
+        # Step 1: Find all detected sections that have line_idx (from detect_sections).
+        # Check session state for detected sections with line positions.
+        all_detected = []
+        for key, val in st.session_state.items():
+            if key.startswith("se_v2_detected_") and isinstance(val, list):
+                all_detected = val
+                break
 
-        # Convert to text and prune empties
-        found_text = {k: "\n".join(v).strip() for k, v in found.items() if v and "\n".join(v).strip()}
+        # Build a list of (line_idx, header_text) for ALL detected sections, sorted by position
+        header_positions = []
+        for sec in all_detected:
+            line_idx = sec.get("line_idx")
+            header_text = sec.get("text", "")
+            if line_idx is not None and isinstance(line_idx, int):
+                header_positions.append((line_idx, header_text))
 
-        # If segmentation looks reasonable (we found at least a few sections), return them
-        if found_text and len(found_text) >= max(2, len(desired_sections) // 3):
-            return found_text
+        # Find where references/appendix starts so we can cap section text there
+        refs_start = self._find_references_start(lines)
 
-        # Otherwise ask LLM to segment into JSON
-        prompt = f"""
+        # If we have header positions, slice text between consecutive headers
+        if header_positions:
+            header_positions.sort(key=lambda x: x[0])
 
-You are an assistant that extracts main sections from an academic economics paper.
-Given the paper text below, split it into the following section names if present (use exactly these names as keys):
-{desired_sections}
+            # Build section text for each header by taking all lines from this header
+            # to the line before the next header
+            all_sections = {}
+            for i, (start_idx, header_text) in enumerate(header_positions):
+                if i + 1 < len(header_positions):
+                    end_idx = header_positions[i + 1][0]
+                else:
+                    end_idx = len(lines)
 
-Return a single JSON object where keys are section names and values are the section text.
-If a section is not present, omit it. Keep values strictly to the section text only.
+                # Cap at references/appendix boundary if the section starts before it
+                if refs_start is not None and start_idx < refs_start and end_idx > refs_start:
+                    end_idx = refs_start
 
-PAPER TEXT:
-{text[:120000]}
-"""
-        resp = self._safe_query(prompt, max_chars=120000)
-        parsed = self._parse_json_from_text(resp)
-        if isinstance(parsed, dict) and parsed:
-            # ensure text values and trim excessively large outputs
-            cleaned = {k: (v.strip()[:200000] if isinstance(v, str) else "") for k, v in parsed.items() if isinstance(v, str) and v.strip()}
-            if cleaned:
-                return cleaned
+                # Include the header line itself, then all text until the next header
+                section_lines = lines[start_idx:end_idx]
+                section_text = "\n".join(section_lines).strip()
+                all_sections[header_text] = section_text
 
-        # fallback: return whole document as "Full Text"
+            # Filter to only the desired sections
+            desired_set = set(desired_sections)
+            result = {k: v for k, v in all_sections.items() if k in desired_set and v}
+
+            if result:
+                return result
+
+        # Fallback: try to locate desired headers directly in the text by exact match
+        header_positions = []
+        for sec_name in desired_sections:
+            for idx, line in enumerate(lines):
+                if line.strip() == sec_name or line.strip() == sec_name.strip():
+                    header_positions.append((idx, sec_name))
+                    break
+
+        if header_positions:
+            header_positions.sort(key=lambda x: x[0])
+            result = {}
+            for i, (start_idx, header_text) in enumerate(header_positions):
+                if i + 1 < len(header_positions):
+                    end_idx = header_positions[i + 1][0]
+                else:
+                    end_idx = len(lines)
+                # Cap at references/appendix boundary
+                if refs_start is not None and start_idx < refs_start and end_idx > refs_start:
+                    end_idx = refs_start
+                section_lines = lines[start_idx:end_idx]
+                section_text = "\n".join(section_lines).strip()
+                if section_text:
+                    result[header_text] = section_text
+
+            if result:
+                return result
+
+        # Last resort fallback: return whole document
         return {"Full Text": text}
 
     # --------------------
@@ -1409,7 +1457,16 @@ Per-section summary:
                         st.write("")
                         st.info(f"Showing {len(top_level_sections)} top-level sections below. {len(subsection_texts)} subsections are hidden but will be included during evaluation.")
 
-                st.write("For each top-level section, choose to **keep**, **remove**, or **merge into** another section:")
+                st.write("For each top-level section, **check** the ones to evaluate, and choose to **keep**, **remove**, or **merge into** another section:")
+
+                # Column headers
+                col_h1, col_h2, col_h3 = st.columns([0.5, 3, 2])
+                with col_h1:
+                    st.caption("Evaluate")
+                with col_h2:
+                    st.caption("Section")
+                with col_h3:
+                    st.caption("Action")
 
             # Use top-level sections for the UI display
             display_sections = top_level_sections if not is_suggestion else detected
@@ -1417,6 +1474,7 @@ Per-section summary:
 
             # For each detected section, show a selectbox: Keep / Remove / Merge into <other>
             actions = {}  # sec_text -> "keep" | "remove" | target_sec_text
+            eval_selected = {}  # sec_text -> bool (whether to evaluate)
 
             # Auto-keep subsections (they'll be merged during evaluation)
             for sec_text in subsection_texts:
@@ -1444,10 +1502,18 @@ Per-section summary:
                 merge_targets = [f"Merge into: {s}" for s in section_names if s != sec_text]
                 options = ["Keep", "Remove"] + merge_targets
 
-                col1, col2 = st.columns([3, 2])
-                with col1:
+                col_check, col_name, col_action = st.columns([0.5, 3, 2])
+                with col_check:
+                    do_eval = st.checkbox(
+                        "Eval",
+                        value=True,
+                        key=f"se_v2_eval_{manuscript}_{i}",
+                        label_visibility="collapsed",
+                    )
+                    eval_selected[sec_text] = do_eval
+                with col_name:
                     st.markdown(f"**{display_label}**")
-                with col2:
+                with col_action:
                     choice = st.selectbox(
                         "Action",
                         options=options,
@@ -1591,6 +1657,14 @@ Per-section summary:
 
                 if not sections:
                     st.warning("No section text could be extracted.")
+                    return
+
+                # Filter to only sections the user checked for evaluation
+                sections = {k: v for k, v in sections.items()
+                            if eval_selected.get(k, True)}
+
+                if not sections:
+                    st.warning("No sections selected for evaluation. Check at least one section.")
                     return
 
                 # Evaluate each section
