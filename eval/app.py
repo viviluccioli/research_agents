@@ -39,7 +39,7 @@ def main():
     with st.expander("Document Uploader", expanded=True):
         uploaded_files = st.file_uploader(
             "Upload manuscripts and/or referee reports for evaluation.",
-            type=['pdf', 'txt', 'docx'],
+            type=['pdf', 'txt', 'docx', 'tex'],
             accept_multiple_files=True
         )
         if uploaded_files:
@@ -53,6 +53,32 @@ def main():
                 cm.clear_history()
             except Exception:
                 pass
+
+        st.markdown("---")
+        st.markdown("**Or paste text directly**")
+        paste_format = st.radio(
+            "Pasted text format:",
+            ["Plain text", "LaTeX source"],
+            horizontal=True,
+            key="paste_format_radio",
+        )
+        pasted_text = st.text_area(
+            "Paste your manuscript text here (plain text or LaTeX source):",
+            height=200,
+            key="paste_text_area",
+        )
+        if st.button("Add pasted text", key="paste_submit_btn"):
+            if pasted_text.strip():
+                ext = ".tex" if paste_format == "LaTeX source" else ".txt"
+                name = f"Pasted Text{ext}"
+                st.session_state.file_data[name] = pasted_text.encode("utf-8")
+                st.success(f"Added pasted text as **{name}**")
+                try:
+                    cm.clear_history()
+                except Exception:
+                    pass
+            else:
+                st.warning("Please paste some text first.")
 
     # Show available files in compact form
     if st.session_state.file_data:
