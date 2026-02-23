@@ -108,8 +108,110 @@ class SectionEvaluator:
         return h.hexdigest()
 
     # --------------------
-    # PDF extraction
+    # Text extraction
     # --------------------
+    @staticmethod
+    def _strip_latex(text: str) -> str:
+        """
+        Strip LaTeX markup from raw source, returning readable plain text.
+        Preserves math expressions (inline and display) for LLM consumption.
+        Pure regex — no external dependencies.
+        """
+        # Pass 0: Normalize line endings
+        text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+        # Pass 1: Remove preamble and postamble
+        m = re.search(r'\\begin\{document\}', text)
+        if m:
+            text = text[m.end():]
+        m = re.search(r'\\end\{document\}', text)
+        if m:
+            text = text[:m.start()]
+
+        # Pass 2: Remove comments (% not preceded by \)
+        text = re.sub(r'(?<!\\)%.*$', '', text, flags=re.MULTILINE)
+
+        # Pass 3: Remove environments to discard entirely
+        for env in ['figure', r'figure\*', 'table', r'table\*', 'tikzpicture',
+                     'tabular', r'tabular\*', 'longtable', 'sidewaystable',
+                     'sidewaysfigure', 'lstlisting', 'verbatim', 'thebibliography']:
+            text = re.sub(
+                r'\\begin\{' + env + r'\}.*?\\end\{' + env + r'\}',
+                '', text, flags=re.DOTALL
+            )
+
+        # Pass 4: Remove \input, \include, \bibliography, \bibliographystyle, \usepackage
+        text = re.sub(r'\\(?:input|include|bibliography|bibliographystyle|usepackage)(?:\[[^\]]*\])?\{[^}]*\}', '', text)
+
+        # Pass 5: Remove \newcommand, \renewcommand, \def definitions
+        text = re.sub(r'\\(?:new|renew|provide)command\*?\{[^}]*\}(?:\[\d+\])?(?:\[[^\]]*\])?\{[^}]*\}', '', text)
+        text = re.sub(r'\\def\\[a-zA-Z]+[^{]*\{[^}]*\}', '', text)
+
+        # Pass 6: Remove \label, \ref, \eqref, \pageref, etc.
+        text = re.sub(r'\\(?:label|ref|eqref|pageref|nameref|autoref|cref|Cref)\{[^}]*\}', '', text)
+
+        # Pass 7: Handle \cite variants — keep citation key as readable text
+        text = re.sub(r'\\cite[tp]?\*?(?:\[[^\]]*\])*\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\(?:citeauthor|citeyear|citealp)\*?(?:\[[^\]]*\])*\{([^}]*)\}', r'\1', text)
+
+        # Pass 8: Section headers — keep title on its own line
+        text = re.sub(
+            r'\\(?:section|subsection|subsubsection|paragraph|subparagraph|chapter)\*?\{([^}]*)\}',
+            r'\n\n\1\n', text
+        )
+
+        # Pass 9: Unwrap formatting commands (iterative for nesting)
+        _unwrap_re = re.compile(
+            r'\\(?:textbf|textit|emph|underline|textsc|textrm|textsf|texttt|'
+            r'mbox|hbox|footnote|title|author|thanks|centering|text)\{([^}]*)\}'
+        )
+        # \href{url}{display} -> display
+        text = re.sub(r'\\href\{[^}]*\}\{([^}]*)\}', r'\1', text)
+        # \url{url} -> url
+        text = re.sub(r'\\url\{([^}]*)\}', r'\1', text)
+        # Iterative unwrap for nested commands
+        prev = None
+        while prev != text:
+            prev = text
+            text = _unwrap_re.sub(r'\1', text)
+
+        # Pass 10: Strip environment wrappers (keep content inside)
+        for env in ['abstract', 'quote', 'quotation', 'center', 'flushleft',
+                     'flushright', 'itemize', 'enumerate', 'description',
+                     'minipage', 'spacing', 'singlespace', 'doublespace',
+                     'equation', r'equation\*', 'align', r'align\*', 'gather',
+                     r'gather\*', 'multline', r'multline\*', 'displaymath', 'math']:
+            text = re.sub(r'\\begin\{' + env + r'\}(?:\[[^\]]*\])?', '', text)
+            text = re.sub(r'\\end\{' + env + r'\}', '', text)
+
+        # Pass 11: \item -> bullet point
+        text = re.sub(r'\\item\s*(?:\[[^\]]*\])?\s*', '\n- ', text)
+
+        # Pass 12: Clean up spacing, line breaks, special characters
+        text = re.sub(r'\\\\(?:\[[^\]]*\])?', '\n', text)
+        text = re.sub(r'\\(?:newline|linebreak)\b', '\n', text)
+        text = re.sub(r'\\(?:par|newpage|clearpage)\b', '\n\n', text)
+        text = re.sub(r'\\(?:noindent|indent|bigskip|medskip|smallskip|vfill|hfill|hspace|vspace)\*?(?:\{[^}]*\})?', '', text)
+        text = re.sub(r'\\(?:maketitle|tableofcontents|listoffigures|listoftables|appendix)\b', '', text)
+        text = re.sub(r'\\(?:centering|raggedright|raggedleft|normalsize|small|large|Large|LARGE|huge|Huge|tiny|footnotesize|scriptsize)\b', '', text)
+        # Thin/medium/thick spaces -> space
+        text = re.sub(r'\\[,;:!]', ' ', text)
+        text = text.replace('~', ' ')
+        # Escaped special characters
+        for esc, ch in [('\\&', '&'), ('\\%', '%'), ('\\$', '$'), ('\\#', '#'), ('\\_', '_'), ('\\{', '{'), ('\\}', '}')]:
+            text = text.replace(esc, ch)
+        # LaTeX dashes and quotes
+        text = text.replace('---', '\u2014')
+        text = text.replace('--', '\u2013')
+        text = re.sub(r"``", '"', text)
+        text = re.sub(r"''", '"', text)
+
+        # Pass 13: Collapse whitespace
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r'(?m)^[ \t]+', '', text)
+        text = re.sub(r'(?m)[ \t]+$', '', text)
+        return text.strip()
+
     def extract_text_from_pdf(self, file_bytes: bytes) -> str:
         """
         Extract text from PDF bytes using pdfplumber. Returns concatenated text.
@@ -1334,8 +1436,13 @@ Per-section summary:
 
         if st.button("Scan for Sections", key=f"se_v2_scan_{manuscript}"):
             file_bytes = files[manuscript]
-            with st.spinner("Extracting text from PDF..."):
-                paper_text = self.extract_text_from_pdf(file_bytes)
+            with st.spinner("Extracting text..."):
+                if manuscript.endswith('.tex'):
+                    paper_text = self._strip_latex(file_bytes.decode('utf-8', errors='replace'))
+                elif manuscript.endswith('.txt'):
+                    paper_text = file_bytes.decode('utf-8', errors='replace')
+                else:
+                    paper_text = self.extract_text_from_pdf(file_bytes)
             with st.spinner("Detecting section headers..."):
                 detected = self.detect_sections(paper_text)
             # Store detected sections and extracted text in session state
@@ -1606,7 +1713,12 @@ Per-section summary:
                 if not paper_text:
                     file_bytes = files[manuscript]
                     with st.spinner("Extracting text..."):
-                        paper_text = self.extract_text_from_pdf(file_bytes)
+                        if manuscript.endswith('.tex'):
+                            paper_text = self._strip_latex(file_bytes.decode('utf-8', errors='replace'))
+                        elif manuscript.endswith('.txt'):
+                            paper_text = file_bytes.decode('utf-8', errors='replace')
+                        else:
+                            paper_text = self.extract_text_from_pdf(file_bytes)
 
                 # Automatically group subsections under parent sections
                 # E.g., if "4. Experimental design" is kept, also include "4.1", "4.2", etc.
