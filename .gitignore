@@ -1,3 +1,5 @@
 eval/.scratchpad.md
 __pycache__/
 *.pyc
+.env
+venv/
