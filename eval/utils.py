@@ -55,9 +55,9 @@ _defaults = _PROVIDER_DEFAULTS.get(_PROVIDER, _PROVIDER_DEFAULTS["openai"])
 API_KEY = os.getenv(_defaults["key_env"], "")
 API_BASE = os.getenv("LLM_API_BASE", _defaults["base"])
 url_chat_completions = f"{API_BASE}/chat/completions"
-model_selection = os.getenv("MODEL_FAST", _defaults["fast"])
+model_selection3 = os.getenv("MODEL_FAST", _defaults["fast"])
 model_selection2 = os.getenv("MODEL_GENERAL", _defaults["general"])
-model_selection3 = os.getenv("MODEL_STRONG", _defaults["strong"])
+model_selection = os.getenv("MODEL_STRONG", _defaults["strong"])
 
 
 def single_query(prompt: str, debug_flag=False, retries=3) -> str: 
