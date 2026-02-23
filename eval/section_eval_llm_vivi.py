@@ -357,9 +357,10 @@ class SectionEvaluator:
             return self._normalize_sections(detected)
 
         # Build numbered candidate list for the LLM
+        # No limit - include all candidates
         candidate_list = "\n".join(
             f'{i+1}. "{c["text"]}"'
-            for i, c in enumerate(candidates[:40])  # cap at 40 to limit prompt size
+            for i, c in enumerate(candidates)
         )
 
         prompt = f"""You are analyzing an economics research paper to identify its section headers.
@@ -832,25 +833,47 @@ STRUCTURED:
             }
 
         # Check for repeated letters (indicates subsection level)
+        # Key insight: If A, B, C appear multiple times, they're subsection markers
         repeated_letters = [letter for letter, count in letter_counts.items() if count > 1]
         has_repeated_letters = len(repeated_letters) > 0
 
-        # Calculate confidence and determine primary style
-        max_pattern = max(patterns.items(), key=lambda x: x[1])
-        primary_style = max_pattern[0]
-        confidence = max_pattern[1] / total_sections if total_sections > 0 else 0
+        # If letters repeat, they're subsections - primary style is something else
+        if has_repeated_letters:
+            # Letters are subsections, find what the primary style is
+            # Remove letter counts from consideration
+            patterns_without_letters = {k: v for k, v in patterns.items()
+                                       if k not in ["letter_upper", "letter_lower"]}
 
-        # Determine subsection style
-        subsection_style = "none"
-        if patterns["numeric_dot"] > 0:
-            subsection_style = "numeric"
-        elif has_repeated_letters:
+            if patterns_without_letters:
+                max_pattern = max(patterns_without_letters.items(), key=lambda x: x[1])
+                primary_style = max_pattern[0]
+
+                # Confidence is based on primary pattern (excluding letter subsections)
+                primary_count = max_pattern[1]
+                total_primary = sum(patterns_without_letters.values())
+                confidence = primary_count / total_primary if total_primary > 0 else 0.5
+            else:
+                # Only letters found - unusual, but handle it
+                primary_style = "letter_upper" if patterns["letter_upper"] > patterns["letter_lower"] else "letter_lower"
+                confidence = 0.5
+
+            # Subsection style is letters
             if patterns["letter_upper"] > patterns["letter_lower"]:
                 subsection_style = "letter_upper"
             else:
                 subsection_style = "letter_lower"
-        elif patterns["roman_lower"] > 0 and patterns["roman_upper"] > patterns["roman_lower"]:
-            subsection_style = "roman_lower"
+        else:
+            # No repeated letters - standard detection
+            max_pattern = max(patterns.items(), key=lambda x: x[1])
+            primary_style = max_pattern[0]
+            confidence = max_pattern[1] / total_sections if total_sections > 0 else 0
+
+            # Determine subsection style
+            subsection_style = "none"
+            if patterns["numeric_dot"] > 0:
+                subsection_style = "numeric"
+            elif patterns["roman_lower"] > 0 and patterns["roman_upper"] > patterns["roman_lower"]:
+                subsection_style = "roman_lower"
 
         # Adjust primary style if mostly subsections
         if primary_style == "numeric_dot" and patterns["arabic"] > patterns["numeric_dot"] / 2:
@@ -873,9 +896,9 @@ STRUCTURED:
         text = header_text.strip()
         primary = style_info.get("primary_style", "arabic")
         subsection = style_info.get("subsection_style", "none")
+        repeated_letters = style_info.get("repeated_letters", [])
 
-        # Try numeric patterns (most common)
-        # Multi-level numeric (1.1, 2.3.1)
+        # Try multi-level numeric first (1.1, 2.3.1) - always subsections
         match = re.match(r'^\s*(\d+(?:\.\d+)+)', text)
         if match:
             return {
@@ -884,44 +907,64 @@ STRUCTURED:
                 "type": "subsection"
             }
 
-        # Single-level numeric (1, 2, 3)
-        match = re.match(r'^\s*(\d+)[\.\):\s]', text)
-        if match:
-            return {
-                "identifier": match.group(1),
-                "level": 1,
-                "type": "primary"
-            }
+        # Check for letter-based sections (A, B, C or a, b, c)
+        # IMPORTANT: Do this before other checks if letters are repeated
+        letter_match = re.match(r'^\s*([A-Za-z])[\.\):\s]', text)
+        if letter_match:
+            letter = letter_match.group(1)
+            is_repeated = letter.upper() in repeated_letters
 
-        # Roman numerals (upper)
-        match = re.match(r'^\s*((?:I{1,3}|IV|V|VI{0,3}|IX|X|XI{0,3}))[\.\):\s]', text)
-        if match and primary == "roman_upper":
-            return {
-                "identifier": match.group(1),
-                "level": 1,
-                "type": "primary"
-            }
+            if is_repeated:
+                # This is a subsection (A appears multiple times in document)
+                return {
+                    "identifier": letter.upper(),
+                    "level": 2,
+                    "type": "subsection"
+                }
+            else:
+                # Single occurrence - could be primary
+                return {
+                    "identifier": letter.upper(),
+                    "level": 1,
+                    "type": "primary"
+                }
+
+        # Roman numerals (upper) - usually primary when letters are subsections
+        roman_upper_match = re.match(r'^\s*((?:I{1,3}|IV|V|VI{0,3}|IX|X|XI{0,3}|XII{0,3}|XIII|XIV|XV))[\.\):\s]', text)
+        if roman_upper_match:
+            # If we have repeated letters as subsections, roman numerals are primary
+            if repeated_letters:
+                return {
+                    "identifier": roman_upper_match.group(1),
+                    "level": 1,
+                    "type": "primary"
+                }
+            elif primary == "roman_upper":
+                return {
+                    "identifier": roman_upper_match.group(1),
+                    "level": 1,
+                    "type": "primary"
+                }
 
         # Roman numerals (lower) - typically subsections
-        match = re.match(r'^\s*((?:i{1,3}|iv|v|vi{0,3}|ix|x|xi{0,3}))[\.\):\s]', text)
-        if match:
+        roman_lower_match = re.match(r'^\s*((?:i{1,3}|iv|v|vi{0,3}|ix|x|xi{0,3}))[\.\):\s]', text)
+        if roman_lower_match:
             return {
-                "identifier": match.group(1),
+                "identifier": roman_lower_match.group(1),
                 "level": 2,
                 "type": "subsection"
             }
 
-        # Letter-based (A, B, C or a, b, c)
-        match = re.match(r'^\s*([A-Za-z])[\.\):\s]', text)
-        if match:
-            letter = match.group(1)
-            is_repeated = letter.upper() in style_info.get("repeated_letters", [])
-
-            return {
-                "identifier": letter,
-                "level": 2 if is_repeated else 1,
-                "type": "subsection" if is_repeated else "primary"
-            }
+        # Single-level numeric (1, 2, 3) - primary if not part of decimal numbering
+        numeric_match = re.match(r'^\s*(\d+)[\.\):\s]', text)
+        if numeric_match:
+            # If letters are subsections, numbers are primary
+            if repeated_letters or primary == "arabic":
+                return {
+                    "identifier": numeric_match.group(1),
+                    "level": 1,
+                    "type": "primary"
+                }
 
         return None
 
@@ -974,7 +1017,7 @@ STRUCTURED:
                 hierarchy[text] = []
             else:
                 # Find parent
-                parent_text = self._find_parent_section(identifier, info, identifier_to_info, style_info)
+                parent_text = self._find_parent_section(identifier, info, identifier_to_info, style_info, detected)
                 if parent_text:
                     if parent_text not in hierarchy:
                         hierarchy[parent_text] = []
@@ -989,10 +1032,11 @@ STRUCTURED:
             "top_level": top_level
         }
 
-    @staticmethod
-    def _find_parent_section(child_id: str, child_info: Dict, all_sections: Dict, style_info: Dict) -> Optional[str]:
+    def _find_parent_section(self, child_id: str, child_info: Dict, all_sections: Dict,
+                            style_info: Dict, detected: List[Dict[str, str]]) -> Optional[str]:
         """
         Find the parent section for a given child identifier.
+        Uses document order (line_idx) to find the most recent primary section before this subsection.
         """
         # Numeric subsections (4.1 -> 4)
         if '.' in child_id:
@@ -1000,16 +1044,30 @@ STRUCTURED:
             if parent_id in all_sections:
                 return all_sections[parent_id]["text"]
 
-        # Letter-based subsections under numeric sections
-        # Look for the most recent numeric section before this letter
-        if child_id.isalpha():
+        # For letter-based subsections, find the most recent primary section
+        # Need to use document order (line_idx)
+        if child_id.isalpha() or child_info.get("type") == "subsection":
             child_text = child_info["text"]
-            # Find preceding numeric section
-            for sec_id, sec_info in all_sections.items():
-                if sec_info["level"] == 1 and sec_id.isdigit():
-                    # This could be the parent
-                    # Check document order (would need line_idx)
-                    return sec_info["text"]
+
+            # Find child's position in detected list
+            child_idx = None
+            for idx, sec in enumerate(detected):
+                if sec.get("text") == child_text:
+                    child_idx = idx
+                    break
+
+            if child_idx is None:
+                return None
+
+            # Look backwards for the most recent primary section
+            for idx in range(child_idx - 1, -1, -1):
+                sec = detected[idx]
+                sec_text = sec.get("text", "")
+
+                # Check if this section is primary
+                id_info = self._extract_section_identifier(sec_text, style_info)
+                if id_info and id_info.get("type") == "primary":
+                    return sec_text
 
         return None
 
@@ -1017,7 +1075,7 @@ STRUCTURED:
         """
         Fallback: Use LLM to determine hierarchy when static methods have low confidence.
         """
-        section_list = "\n".join([f'{i+1}. "{sec.get("text", "")}"' for i, sec in enumerate(detected[:50])])
+        section_list = "\n".join([f'{i+1}. "{sec.get("text", "")}"' for i, sec in enumerate(detected)])
 
         prompt = f"""Analyze these section headers from an academic paper and determine their hierarchical relationships.
 
@@ -1364,6 +1422,19 @@ Per-section summary:
             for sec_text in subsection_texts:
                 actions[sec_text] = "keep"
 
+            # Pre-extract section text for preview (cache it)
+            paper_text = st.session_state.get(f"se_v2_text_{manuscript}", "")
+            preview_cache_key = f"se_v2_preview_{manuscript}"
+
+            if paper_text and preview_cache_key not in st.session_state:
+                # Extract text for all sections to show previews
+                all_section_names = [sec["text"] for sec in detected]
+                with st.spinner("Extracting section text for preview..."):
+                    preview_sections = self.extract_sections_from_text(paper_text, all_section_names)
+                st.session_state[preview_cache_key] = preview_sections
+
+            preview_sections = st.session_state.get(preview_cache_key, {})
+
             for i, sec in enumerate(display_sections):
                 sec_text = sec["text"]
                 sec_type = sec.get("type", "")
@@ -1392,6 +1463,67 @@ Per-section summary:
                 elif choice.startswith("Merge into: "):
                     target = choice[len("Merge into: "):]
                     actions[sec_text] = target
+
+                # Add text preview expander
+                section_preview_text = preview_sections.get(sec_text, "")
+
+                # Check if this section has subsections that will be merged
+                children_texts = []
+                if sec_text in hierarchy:
+                    children_texts = hierarchy[sec_text]
+                    for child_text in children_texts:
+                        child_preview = preview_sections.get(child_text, "")
+                        if child_preview:
+                            section_preview_text += "\n\n" + child_preview
+
+                if section_preview_text:
+                    word_count = len(section_preview_text.split())
+                    char_count = len(section_preview_text)
+
+                    with st.expander(f"👁️ Preview extracted text ({word_count:,} words, {char_count:,} chars)"):
+                        if children_texts:
+                            st.info(f"Preview includes subsections: {', '.join(children_texts)}")
+
+                        # Show first 3000 characters with option to see more
+                        if char_count <= 3000:
+                            st.text_area(
+                                "Raw extracted text:",
+                                section_preview_text,
+                                height=300,
+                                key=f"se_v2_preview_text_{manuscript}_{i}",
+                                disabled=True
+                            )
+                        else:
+                            # Show preview with "show more" option
+                            show_full_key = f"se_v2_show_full_{manuscript}_{i}"
+                            if show_full_key not in st.session_state:
+                                st.session_state[show_full_key] = False
+
+                            if st.session_state[show_full_key]:
+                                st.text_area(
+                                    "Raw extracted text (full):",
+                                    section_preview_text,
+                                    height=500,
+                                    key=f"se_v2_preview_text_full_{manuscript}_{i}",
+                                    disabled=True
+                                )
+                                if st.button("Show less", key=f"se_v2_show_less_{manuscript}_{i}"):
+                                    st.session_state[show_full_key] = False
+                                    st.rerun()
+                            else:
+                                st.text_area(
+                                    "Raw extracted text (preview - first 3000 chars):",
+                                    section_preview_text[:3000] + "\n\n... [truncated]",
+                                    height=300,
+                                    key=f"se_v2_preview_text_short_{manuscript}_{i}",
+                                    disabled=True
+                                )
+                                if st.button("Show full text", key=f"se_v2_show_full_btn_{manuscript}_{i}"):
+                                    st.session_state[show_full_key] = True
+                                    st.rerun()
+                else:
+                    with st.expander("👁️ Preview extracted text"):
+                        st.warning("⚠️ No text could be extracted for this section. The section header was detected, but the content extraction failed. Consider removing this section or merging it.")
 
             # ---- Phase 3: Evaluate selected sections ----
             if st.button("Evaluate Selected Sections", key=f"se_v2_run_{manuscript}"):
