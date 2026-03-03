@@ -1,12 +1,12 @@
 # app.py - Evaluation Agent with tabbed workflows
 import streamlit as st
 from referee import RefereeReportChecker
-from section_eval_llm_vivi import SectionEvaluator
+from section_eval import SectionEvaluatorApp
 from utils import cm
 
 WORKFLOWS = {
     "Referee Report": RefereeReportChecker,
-    "Section Evaluator": SectionEvaluator,
+    "Section Evaluator": SectionEvaluatorApp,
 }
 
 def _ensure_session_keys():
