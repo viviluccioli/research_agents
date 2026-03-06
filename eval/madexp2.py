@@ -20,9 +20,6 @@ client = genai.Client(api_key=API_KEY)
 OUTPUT_DIR = "/content/drive/MyDrive/SENIOR_YEAR/FED"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# ==========================================
-# 2. THE "RESILIENT" LLM CALL (Serial Edition)
-# ==========================================
 @retry(
     stop=stop_after_attempt(12), # Increased for Free Tier survival
     wait=wait_exponential(multiplier=10, min=30, max=300), 
@@ -76,9 +73,8 @@ def wait_for_files_active(files):
         print(f"  ✓ {f.display_name} is ACTIVE and ready.")
 
 # ==========================================
-# 3. FILE UPLOADS
+# 3. FILE UPLOADS; change accoring to local file location
 # ==========================================
-# UNCOMMENT THESE WHEN READY TO RUN
 paper1 = client.files.upload(file='/content/drive/MyDrive/SENIOR_YEAR/FED/MadTest1.pdf')
 wait_for_files_active([paper1])
 print(f"Uploaded {paper1.display_name} as {paper1.name}")
