@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Ignore everything by default
+*
+
+# Except these directories (with contents)
+!app_system/
+!app_system/**
+!docs/
+!docs/**
+!rithika_experiments/
+!rithika_experiments/**
+
+# And these specific files
+!.gitignore
+!pyproject.toml
+!README.md
