@@ -1,15 +1,21 @@
-.scratchpad.md
+# Python
 __pycache__/
 *.pyc
-.env
 venv/
+.env
 
-# Research files and notes (not part of main codebase)
-notes/
-beigebook.pdf
-HIGH-prompts-to-paper.pdf
-POOR-prompts-to-paper.pdf
-POOR_results_0304.docx
-Review_beigebook_20260306_100711.txt
-script_demo.docx
-.env.example
+# Ignore everything by default
+*
+
+# Except these directories (with contents)
+!app_system/
+!app_system/**
+!docs/
+!docs/**
+!rithika_experiments/
+!rithika_experiments/**
+
+# And these specific files
+!.gitignore
+!pyproject.toml
+!README.md

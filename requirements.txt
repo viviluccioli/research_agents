@@ -1,7 +1,0 @@
-requests
-pandas
-tiktoken==0.5.1
-pdfplumber
-streamlit
-python-dotenv
-fpdf2
