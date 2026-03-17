@@ -1,93 +1,154 @@
-# AI Economist
+# Research Evaluation Agents
 
-This is a test commit.
+AI-powered evaluation system for economics research papers using multi-agent debate and section-level assessment.
 
-## Getting started
+## Overview
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+This repository contains a dual-system framework for evaluating economics research:
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+1. **Multi-Agent Debate (MAD)**: Simulates peer review through debates between specialized AI personas
+2. **Section Evaluator**: Provides detailed, criteria-based scoring of individual sections
 
-## Add your files
+Both systems are paper-type aware (empirical/theoretical/policy), require textual evidence for all claims, and use proportional error weighting.
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+## Repository Structure
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.rsma.frb.gov/stabilize-ai-lab/ai-economist.git
-git branch -M main
-git push -uf origin main
+research_agents-main/
+├── app_system/              # Main evaluation application
+│   ├── README.md           # Detailed setup and usage guide
+│   ├── app_demo2.py        # Streamlit app (main interface)
+│   ├── run_app.sh          # Launch script
+│   ├── multi_agent_debate.py  # MAD orchestration
+│   ├── referee.py          # Referee report workflow
+│   ├── utils.py            # LLM utilities
+│   └── section_eval/       # Section evaluator module
+│       ├── main.py
+│       ├── criteria/       # Evaluation criteria
+│       └── prompts/        # Prompt templates
+├── docs/                    # Documentation
+│   ├── FRAMEWORK.md        # System overview
+│   ├── ARCHITECTURE.md     # Technical architecture
+│   ├── CRITERIA_MATRIX.md  # Evaluation criteria
+│   └── ...                 # Additional documentation
+├── pyproject.toml          # Python dependencies
+└── *.py                    # Experimental/legacy scripts
 ```
 
-## Integrate with your tools
+## Quick Start
 
-- [ ] [Set up project integrations](https://gitlab.rsma.frb.gov/stabilize-ai-lab/ai-economist/-/settings/integrations)
+### Prerequisites
 
-## Collaborate with your team
+- Python 3.8+
+- Access to Federal Reserve internal API endpoint
+- API key for Claude models
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+### Installation
 
-## Test and Deploy
+1. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd research_agents-main
+   ```
 
-Use the built-in continuous integration in GitLab.
+2. **Install dependencies**:
+   ```bash
+   pip install streamlit pandas numpy requests tqdm pdfplumber tiktoken
+   ```
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+   Or use pyproject.toml:
+   ```bash
+   pip install -e .
+   ```
 
-***
+3. **Configure API credentials**:
 
-# Editing this README
+   Edit `app_system/utils.py` to set:
+   - `API_KEY`: Your Federal Reserve API key
+   - `API_BASE`: API endpoint URL
+   - `model_selection`: Claude model version
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+   **Important**: Never commit real API keys to version control!
 
-## Suggestions for a good README
+### Running the Application
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+```bash
+cd app_system
+./run_app.sh
+```
 
-## Name
-Choose a self-explaining name for your project.
+Or manually:
+```bash
+streamlit run app_demo2.py --server.fileWatcherType none --server.port 8501
+```
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+The app will be available at `http://localhost:8501`
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## Documentation
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+Full documentation is available in the `docs/` directory:
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+- **[FRAMEWORK.md](docs/FRAMEWORK.md)** - System overview and design philosophy
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical architecture deep dive
+- **[CRITERIA_MATRIX.md](docs/CRITERIA_MATRIX.md)** - Complete evaluation criteria
+- **[QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** - Quick command reference
+- **[DEMO_README.md](docs/DEMO_README.md)** - Demo walkthrough
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+For detailed setup instructions, see **[app_system/README.md](app_system/README.md)**
+
+## Key Features
+
+### Multi-Agent Debate
+- Endogenous persona selection (AI picks 3 most relevant reviewers)
+- Structured 4-round debate protocol
+- Weighted consensus voting
+- Full transparency with debate transcripts
+
+### Section Evaluator
+- Paper-type aware criteria (empirical/theoretical/policy)
+- Evidence-backed scoring with verbatim quotes
+- Hierarchical importance weighting
+- Actionable improvement recommendations
+
+## Use Cases
+
+1. **Pre-submission review**: Get feedback before journal submission
+2. **Editorial screening**: Triage borderline papers for review
+3. **PhD training**: Provide detailed feedback to students
+4. **Internal policy papers**: Assess Fed analysis before senior review
+5. **Replication studies**: Identify robustness gaps in published work
+
+## Development
+
+### Repository Organization
+
+- **app_system/**: Production-ready evaluation application
+- **docs/**: Comprehensive documentation
+- **changelog/**: Version history and changes
+- **comparative results/**: Benchmark evaluations
+- **rithika_experiments/**: Experimental features
+- ***.py** (root level): Legacy/experimental scripts
+
+### Key Files
+
+- `section_eval.py`, `section_eval_new.py` - Legacy section evaluator versions
+- `madexp*.py` - Experimental MAD variations
+- `routing.py` - Routing utilities
 
 ## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+For issues, questions, or feature requests:
+- Check the [app_system README](app_system/README.md) for detailed troubleshooting
+- Review documentation in `docs/`
+- Contact: research-agents@federalreserve.gov
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+## Version
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+Current Version: 3.0
+Last Updated: March 2026
+Status: Production-ready, active use in Federal Reserve System
 
 ## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Federal Reserve System Internal Use
+
