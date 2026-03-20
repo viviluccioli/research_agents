@@ -1,11 +1,19 @@
 # app_demo.py - Demo Version with Architecture Diagrams
+from pathlib import Path
+import sys
+
 import streamlit as st
 from PIL import Image
+
+APP_SYSTEM_DIR = Path(__file__).resolve().parents[1]
+if str(APP_SYSTEM_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_SYSTEM_DIR))
+
 from section_eval import SectionEvaluatorApp
 from utils import cm
 
 # Page configuration
-st.set_page_config(layout="wide", page_title="Evaluation Agent Demo 2", page_icon="📊")
+st.set_page_config(layout="wide", page_title="Evaluation Agent Demo", page_icon="📊")
 
 # Custom CSS for styling
 st.markdown("""
@@ -15,7 +23,7 @@ st.markdown("""
         border-radius: 10px;
         margin: 10px 0;
     }
-    .empiricist-box {
+    .mathematician-box {
         background-color: #e3f2fd;
         border-left: 5px solid #1976d2;
     }
@@ -23,7 +31,7 @@ st.markdown("""
         background-color: #f3e5f5;
         border-left: 5px solid #7b1fa2;
     }
-    .policymaker-box {
+    .visionary-box {
         background-color: #fff3e0;
         border-left: 5px solid #f57c00;
     }
@@ -71,7 +79,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Main title
-st.title("📊 Research Evaluation Agent - Demo 2")
+st.title("📊 Research Evaluation Agent")
 st.markdown("**AI-powered manuscript evaluation system for economics research**")
 st.markdown("---")
 
@@ -392,30 +400,15 @@ with tab2:
     # Agent Persona Descriptions
     st.markdown("### 👥 Meet the Review Panel")
 
-    # Persona Selection Justification
-    st.markdown("""
-    <div style="background: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #1976d2; margin: 20px 0;">
-        <h4 style="margin-top: 0;">🎯 Why These Personas Were Chosen</h4>
-        <p><strong>Weights:</strong> Empiricist (40%), Policymaker (35%), Historian (25%)</p>
-        <p><strong>Justification:</strong> The paper's rigorous empirical analysis of textual data for economic forecasting and policy relevance,
-        coupled with its historical contextualization of the Beige Book, makes the Empiricist, Policymaker, and Historian personas most crucial.</p>
-        <ul style="margin: 10px 0;">
-            <li><strong>Empiricist (40%):</strong> Primary focus on statistical validity and econometric rigor for sentiment analysis</li>
-            <li><strong>Policymaker (35%):</strong> Assesses real-world applicability and policy implications of forecasting models</li>
-            <li><strong>Historian (25%):</strong> Evaluates methodological advancement and literature contextualization</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
-
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.markdown("""
-        <div class="persona-box empiricist-box">
-            <h4>📊 Empiricist</h4>
-            <p><strong>Focus:</strong> Empirical validity, statistical rigor, data quality</p>
-            <p><strong>Criteria:</strong> Identification strategy, model specification, standard errors, robustness</p>
-            <p><strong>Personality:</strong> Methodologically rigorous, critical of statistical claims</p>
+        <div class="persona-box mathematician-box">
+            <h4>🔢 Mathematician</h4>
+            <p><strong>Focus:</strong> Technical rigor, empirical validity, mathematical accuracy</p>
+            <p><strong>Criteria:</strong> Model specification, statistical inference, derivation correctness</p>
+            <p><strong>Personality:</strong> Harsh, detail-oriented, doesn't care about "story"</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -431,11 +424,11 @@ with tab2:
 
     with col3:
         st.markdown("""
-        <div class="persona-box policymaker-box">
-            <h4>🏛️ Policymaker</h4>
-            <p><strong>Focus:</strong> Policy applicability, welfare implications, real-world impact</p>
-            <p><strong>Criteria:</strong> Actionable insights, feasibility, practical relevance</p>
-            <p><strong>Personality:</strong> Impact-oriented, values implementable recommendations</p>
+        <div class="persona-box visionary-box">
+            <h4>🚀 Visionary</h4>
+            <p><strong>Focus:</strong> Innovation, paradigm-shifting potential, creativity</p>
+            <p><strong>Criteria:</strong> Novelty score, field impact, intellectual risk</p>
+            <p><strong>Personality:</strong> Bold, values breakthroughs over incrementalism</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -523,39 +516,33 @@ with tab2:
     # ROUND 1: Independent Evaluation
     st.markdown('<div class="round-header">⚡ ROUND 1: INDEPENDENT EVALUATION</div>', unsafe_allow_html=True)
 
-    # Empiricist Round 1
-    with st.expander("📊 **EMPIRICIST** - Round 1 Assessment", expanded=False):
+    # Mathematician Round 1
+    with st.expander("🔢 **MATHEMATICIAN** - Round 1 Assessment", expanded=False):
         st.markdown("""
-        <div class="persona-box empiricist-box">
+        <div class="persona-box mathematician-box">
 
         <h4>1. Verdict</h4>
-        <p class="verdict-revise">⚠️ REVISE</p>
+        <p class="verdict-fail">❌ FAIL</p>
 
-        <h4>2. Empirical Audit</h4>
-        <p>The paper investigates the predictive and nowcasting power of Beige Book sentiment using FinBERT for sentiment extraction
-        and linear/logistic regression models. The use of FinBERT is sound, and text preprocessing is standard. The exclusion of
-        COVID-19 period (1980:Q2 to 2019:Q4) is reasonable. Model specifications for GDP growth nowcasting/forecasting and recession
-        prediction are appropriate for time series analysis. Panel regressions for regional analysis with bank and year fixed effects
-        are well-specified.</p>
+        <h4>2. Rationale</h4>
+        <p>The paper employs a mixed methodology, combining natural language processing (NLP) techniques with econometric modeling
+        to analyze the Beige Book. While the application of FinBERT for sentiment scoring and LDA for topic modeling is methodologically
+        sound, the econometric implementation suffers from fundamental flaws.</p>
 
-        <p><strong>⚠️ CRITICAL FLAW - STANDARD ERRORS:</strong></p>
-        <p>A significant concern arises from the treatment of standard errors in all regression analyses. For time series regressions
-        (Tables 1, 2, 4, 5) and panel regressions (Table 6), the paper only states "Standard errors appear in parentheses."</p>
+        <p><strong>⚠️ CRITICAL FLAW IDENTIFIED:</strong></p>
+        <p>In Table 6, Model (1), which includes both bank and year fixed effects, the reported <strong>Adjusted R² is -0.111</strong>.
+        This value indicates that the model explains less variance than a simple model with only an intercept. A negative Adjusted R²
+        implies a very poor fit and suggests that the included predictors do not collectively improve upon a basic benchmark.</p>
 
-        <p><strong>For time series data:</strong> Macroeconomic time series are highly likely to exhibit serial correlation. Standard
-        OLS/MLE standard errors would be biased and inconsistent, leading to incorrect inference. Robust standard errors, such as
-        Newey-West, are typically required.</p>
+        <p>This directly <strong>contradicts the authors' claim</strong> that "The R Squares are relatively high, indicating that a lot
+        of the variation in economic growth rates across Reserve Banks and through time can be captured by our panel model" (Page 22).</p>
 
-        <p><strong>For panel data:</strong> Errors are almost certainly correlated within each bank over time. Standard errors should
-        be clustered at the bank level at a minimum. Without this, the reported significance levels are likely overstated.</p>
+        <p>This fundamental misrepresentation of model performance undermines empirical validity and constitutes a critical breach of scientific reporting standards.</p>
 
-        <p>This omission of appropriate robust or clustered standard errors is a <strong>critical flaw</strong> that undermines the
-        statistical validity of all quantitative results.</p>
-
-        <h4>3. Source Evidence</h4>
+        <h4>3. Evidence</h4>
         <ul>
-            <li>"Standard errors appear in parentheses: *p< 0.1; **p< 0.05; ***p< 0.01." (Tables 1, 2, 4, 5, 6) - No mention of clustering or HAC</li>
-            <li>"We conduct our empirical analysis from 1980:Q2 to 2019:Q4." (p. 7)</li>
+            <li>"Table 6: Federal Reserve Bank-Level Panel Regressions" (Page 22) → Model (1) Adjusted R²: <strong>-0.111</strong></li>
+            <li>Authors' claim: "The R Squares are relatively high, indicating that a lot of the variation in economic growth rates across Reserve Banks and through time can be captured by our panel model" (Page 22)</li>
         </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -568,76 +555,65 @@ with tab2:
         <h4>1. Verdict</h4>
         <p class="verdict-pass">✅ PASS</p>
 
-        <h4>2. Lineage & Context</h4>
-        <p>This paper builds upon a well-established lineage of economic literature on the Federal Reserve's Beige Book. Early
-        predecessors include Balke and Petersen (2002) and Balke, Fulmer, and Zhang (2017), who pioneered converting Beige Book
-        text into numerical scores. Further advancements include Sadique et al. (2013), who demonstrated predictive power for
-        economic turning points, and Gascon and Werner (2022), who utilized keyword searches. Recent works like Burke and Nelson
-        (2025) and Gascon and Martorana (2025) continue exploring the Beige Book's utility.</p>
+        <h4>2. Rationale</h4>
+        <p>This paper is <strong>firmly grounded</strong> in the existing literature on using the Federal Reserve's Beige Book for
+        economic analysis, while also integrating advancements in natural language processing (NLP).</p>
 
-        <h4>3. Gap Analysis</h4>
-        <p>The paper claims to fill several gaps:</p>
+        <p>The authors explicitly acknowledge foundational work (Balke and Petersen 2002; Balke, Fulmer and Zhang 2017;
+        Gascon and Werner 2022; Sadique et al. 2013) and effectively identify <strong>several genuine gaps</strong>:</p>
 
-        <p><strong>1. Methodological Advancement (FinBERT):</strong> Moving beyond dictionary-based approaches by employing
-        FinBERT represents a genuine methodological advancement. ✅ <em>Gap is real and convincingly filled.</em></p>
+        <p><strong>1. Methodological Advancement:</strong> Leverages "new machine learning models" like FinBERT for sentiment
+        analysis and LDA for topic modeling, offering more sophisticated extraction than previous dictionary approaches.</p>
 
-        <p><strong>2. Comprehensive Control Variables:</strong> Explicitly controlling for yield spread, news sentiment, and
-        SPF forecasts is a rigorous approach to isolating the unique contribution of Beige Book sentiment. ✅ <em>Gap is
-        addressed with appropriate econometric analysis.</em></p>
+        <p><strong>2. Regional Granularity:</strong> Authors explicitly state that "the literature has not touched upon" the Beige
+        Book's ability to shed light on regional economic activity. Their analysis of Reserve Bank-level sentiment and spillover
+        effects directly fills this void.</p>
 
-        <p><strong>3. Regional Economic Activity:</strong> While Burke and Nelson (2025) use regional Beige Book data for
-        national forecasts, this paper's specific focus on explaining <em>regional GDP growth</em> and identifying
-        <em>inter-regional spillover effects</em> is indeed a distinct contribution. ✅ <em>Genuine extension addressed
-        with panel regressions.</em></p>
+        <p><strong>3. Richer Historical Context:</strong> Provides context on "how different topics evolved throughout the past
+        half century," including international developments and distinct characteristics of different recessionary periods.</p>
 
-        <p><strong>4. Richer Context:</strong> Using LDA for topic modeling offers valuable qualitative insights into how
-        economic concerns evolved historically. ✅ <em>Convincingly demonstrated.</em></p>
+        <p>The paper demonstrates strong contextualization and genuine gap identification, meeting standards for literature grounding.</p>
 
-        <h4>4. Source Evidence</h4>
-        <p><em>"However, most of the literature is based on the entire body of text and uses a dictionary approach... We also
-        show that the Beige Book can shed light on regional economic activity as well, which the literature has not touched upon."</em> (p. 5)</p>
+        <h4>3. Evidence</h4>
+        <p><em>"However, most of the literature is based on the entire body of text and uses a dictionary approach for extracting
+        information from the Beige Books. In this paper, we provide a general overview of how sentiment measured by new machine
+        learning models can help nowcast and predict economic activity and recessions... We also show that the Beige Book can shed
+        light on regional economic activity as well, which the literature has not touched upon."</em> (Page 5)</p>
         </div>
         """, unsafe_allow_html=True)
 
-    # Policymaker Round 1
-    with st.expander("🏛️ **POLICYMAKER** - Round 1 Assessment", expanded=False):
+    # Visionary Round 1
+    with st.expander("🚀 **VISIONARY** - Round 1 Assessment", expanded=False):
         st.markdown("""
-        <div class="persona-box policymaker-box">
+        <div class="persona-box visionary-box">
 
         <h4>1. Verdict</h4>
         <p class="verdict-pass">✅ PASS</p>
 
-        <h4>2. Policy Applicability</h4>
-        <p>This paper offers several actionable insights for central banks, government agencies, and research institutions:</p>
+        <h4>2. Rationale</h4>
+        <p>This paper makes a <strong>compelling case for a re-evaluation of "soft information"</strong> in economic analysis,
+        particularly within central banking.</p>
 
-        <p><strong>1. Enhanced Real-Time Economic Assessment:</strong> Policymakers can integrate the FinBERT-derived Beige Book
-        sentiment index into real-time economic monitoring dashboards. Its robust performance in nowcasting GDP growth and
-        forecasting recessions makes it a valuable complementary tool.</p>
+        <p>By systematically demonstrating the unique predictive power of the Beige Book's qualitative insights—especially concerning
+        regional economic interdependencies and recession forecasting—it <strong>challenges the prevailing paradigm</strong> that
+        often prioritizes quantitative, hard data.</p>
 
-        <p><strong>2. Early Warning System for Recessions:</strong> The Beige Book sentiment's superior ability to predict economic
-        recessions and identify business cycle turning points suggests it can serve as an early warning indicator for downside risks.</p>
-
-        <p><strong>3. Granular Regional Policy Insights:</strong> Reserve Bank-level Beige Book sentiment explains regional GDP
-        growth, with spillover effects between districts providing crucial intelligence for understanding heterogeneous economic
-        conditions across Federal Reserve Districts.</p>
-
-        <p><strong>4. Contextualizing Economic Shocks:</strong> Topical analysis (keyword searches and LDA) provides rich historical
-        context for economic events, helping policymakers differentiate between unique economic episodes.</p>
-
-        <h4>3. Welfare Implications</h4>
-        <p>A deeper, more timely understanding of economic conditions can lead to more targeted and effective policy interventions:</p>
+        <p><strong>Key Findings:</strong></p>
         <ul>
-            <li><strong>More Timely Monetary Policy:</strong> Earlier recession signals enable more nimble policy decisions</li>
-            <li><strong>Reduced Economic Volatility:</strong> Proactive responses can help stabilize economic cycles</li>
-            <li><strong>Improved Resource Allocation:</strong> Regional insights allow for better-targeted federal resources</li>
-            <li><strong>Enhanced Public Trust:</strong> More comprehensive understanding leads to better communication</li>
+            <li>Beige Book sentiment significantly explains regional GDP growth variation</li>
+            <li>Substantial spillover effects: each district's activity correlates with sentiment about other districts</li>
+            <li>Remarkable predictive power for economic recessions, even controlling for canonical predictors (yield curve)</li>
         </ul>
 
-        <h4>4. Source Evidence</h4>
-        <p><em>"Our most robust finding is the Beige Book's remarkable predictive power for economic recessions. The FinBERT
-        sentiment index demonstrates statistically significant explanatory power in both nowcasting and forecasting recessions."</em> (p. 31)</p>
+        <p>If these findings hold, it could lead to a <strong>significant shift</strong> in how policymakers gather, interpret, and
+        integrate anecdotal intelligence, moving it from a supplementary input to a core component of real-time economic assessment.
+        The novel approach demonstrates significant paradigm-shifting potential.</p>
+
+        <h4>3. Evidence</h4>
         <p><em>"A major contribution of our analysis is demonstrating that the Beige Book's informational value extends to regional
-        economic activity... We find substantial spillover effects."</em> (p. 31)</p>
+        economic activity... Even more intriguingly, we find substantial spillover effects: each district's economic activity is
+        strongly correlated with sentiment expressed about other districts beyond its own sentiment. This finding has important
+        implications for understanding how regional economic conditions propagate through the national economy."</em> (Page 31)</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -647,103 +623,106 @@ with tab2:
     st.markdown('<div class="round-header">🔄 ROUND 2A: CROSS-EXAMINATION</div>', unsafe_allow_html=True)
     st.markdown("*Agents read each other's reports and engage in constructive debate...*")
 
-    with st.expander("📊 **EMPIRICIST** - Cross-Examination", expanded=False):
+    with st.expander("🔢 **MATHEMATICIAN** - Cross-Examination", expanded=False):
         st.markdown("""
-        <div class="persona-box empiricist-box">
-        <h4>Empirical Audit (Updated)</h4>
-        <p>The Policymaker's enthusiasm for the Beige Book sentiment as an "early warning system for recessions" and for "enhanced
-        real-time economic assessment" is largely validated by the econometric analysis, particularly the strong nowcasting and
-        recession forecasting results. The Historian's recognition of methodological advancement using FinBERT and rigorous inclusion
-        of control variables aligns with sound econometric practice.</p>
+        <div class="persona-box mathematician-box">
+        <h4>Synthesis with Other Agents</h4>
+        <p><strong>With Historian:</strong> I acknowledge the Historian's robust assessment of the paper's grounding in existing literature and clear identification
+        of genuine gaps. This provides solid motivation for the research questions. However, <strong>methodological soundness and
+        empirical validity are paramount</strong>. If the econometric implementation suffers from fundamental issues such as poor
+        model fit in key specifications, the claimed advancements become tenuous.</p>
 
-        <p><strong>However, a critical econometric detail remains unaddressed:</strong> The paper states "Standard errors appear in
-        parentheses" in all regression tables, but it does not specify whether these are robust to heteroskedasticity or clustered
-        for potential autocorrelation in time series data or panel-specific effects. Given that the data are time series and panel
-        data, uncorrected standard errors could lead to inflated t-statistics and spurious claims of statistical significance.</p>
+        <p><strong>With Visionary:</strong> I appreciate the identification of "unique predictive power" and "inter-district spillover effects." These are significant
+        claims that could have profound implications. However, the validity hinges entirely on empirical rigor. <strong>If the
+        statistical foundations are weak</strong>—due to issues like uncorrected standard errors or models that fail to fit the
+        data—then the "paradigm potential" is severely undermined.</p>
 
         <h4>Constructive Pushback</h4>
-        <p>While the Policymaker and Historian praise the "robust performance" and "statistically significant explanatory power,"
-        this assessment is premature without proper validation of reported statistical significance.</p>
-
-        <h4>Clarification Requests</h4>
+        <p>The Visionary's enthusiasm for "remarkable predictive power" and "substantial spillover effects" is <strong>premature
+        given the econometric issues</strong>. Specifically:</p>
         <ul>
-            <li><strong>To Policymaker:</strong> Given that Beige Book sentiment shows "minimal evidence of contributing to
-            out-of-sample forecasting performance" for GDP growth (Table 3), how does this affect confidence in using it as
-            an early warning system?</li>
-            <li><strong>To Historian:</strong> Could you elaborate on whether the type of standard errors used (HAC for time series,
-            clustered for panel) was considered in assessing the convincingness of empirical results?</li>
+            <li>No explicit statement whether standard errors are robust to heteroskedasticity and autocorrelation</li>
+            <li>Table 6, Model (1): Adjusted R² of -0.111 contradicts any claim of "significant explanatory power"</li>
+            <li>This fundamentally weakens evidence for regional effects</li>
         </ul>
 
+        <h4>Questions for Authors</h4>
+        <ol>
+            <li>Could the authors confirm whether standard errors in Tables 1-6 are robust? If not, provide updated analysis.</li>
+            <li>Regarding Table 6, Model (1): Please explain the negative Adjusted R² and how this impacts interpretation.</li>
+        </ol>
+
         <h4>Updated Verdict</h4>
-        <p class="verdict-revise">⚠️ REVISE</p>
+        <p class="verdict-fail">❌ FAIL</p>
         </div>
         """, unsafe_allow_html=True)
 
     with st.expander("📚 **HISTORIAN** - Cross-Examination", expanded=False):
         st.markdown("""
         <div class="persona-box historian-box">
-        <h4>Lineage & Context (Updated)</h4>
-        <p>This paper builds effectively on existing literature by introducing more advanced NLP techniques (FinBERT, LDA) and
-        conducting a rigorous empirical analysis with comprehensive controls. The extension to specific regional economic outcomes
-        and inter-regional spillovers constitutes a genuine and valuable contribution.</p>
+        <h4>Synthesis with Other Agents</h4>
+        <p><strong>With Mathematician:</strong> I accept the Mathematician's rigorous audit, particularly the finding of a negative Adjusted R² for Model (1) in Table 6.
+        This is not merely a technical detail but a <strong>fundamental flaw that directly contradicts the authors' claims</strong>
+        regarding the explanatory power of their regional panel model.</p>
 
-        <p><strong>However, the convincingness of how these gaps are filled, particularly regarding quantitative claims of
-        "statistically significant explanatory power," is severely undermined by the Empiricist's critical audit.</strong></p>
+        <p>The authors state, "The R Squares are relatively high, indicating that a lot of the variation in economic growth rates
+        across Reserve Banks and through time can be captured by our panel model" (Page 22), which is a <strong>clear misrepresentation</strong>
+        of a negative R².</p>
 
-        <p>The claimed gaps are largely real and represent genuine advancements. Yet the pervasive issue with standard error
-        calculations means that statistical significance reported in Tables 1, 2, 4, 5, and 6 cannot be trusted. While qualitative
-        insights from topical analysis remain valuable, the core quantitative claims lack robust statistical foundation.</p>
-
-        <h4>Cross-Domain Insights</h4>
-        <p>The Empiricist's report highlights a critical econometric flaw in standard error calculation that fundamentally compromises
-        statistical validity of all quantitative claims. From an Economic Historian's perspective, while the paper identifies
-        legitimate gaps and proposes innovative ways to fill them, the evidence presented for quantitative aspects is currently
-        unreliable.</p>
+        <p><strong>Impact on My Domain:</strong> From my historical perspective, this <strong>invalidates a core claim of novelty</strong>: that the Beige Book sheds
+        light on regional economic activity "which the literature has not touched upon" (Page 5). If the evidence for this novel
+        regional insight is flawed and misrepresented, the entire argument for this aspect of the paper's contribution collapses.</p>
 
         <h4>Constructive Pushback</h4>
-        <p>I must strongly push back against the Policymaker's "PASS" verdict and unreserved praise for "robust performance." The
-        Empiricist clearly states that "the omission of appropriate method for calculating standard errors is a critical flaw"
-        that "undermines statistical inference of all quantitative results." Claims of predictive power are only as strong as their
-        statistical foundation.</p>
+        <p>The Visionary's praise for "discovery of inter-district spillover effects" and the paper's ability to demonstrate regional
+        insights is directly undermined by the Mathematician's findings. The regional analysis was presented as a significant, novel
+        contribution, and if the underlying statistical evidence is flawed, the scope of "paradigm potential" for regional insights
+        is severely diminished.</p>
+
+        <h4>Questions for Authors</h4>
+        <ol>
+            <li><strong>To Mathematician:</strong> Does the flaw in Model (1) cast doubt on Model (2) or other regional claims?</li>
+            <li><strong>To Visionary:</strong> Given the negative Adjusted R² and misrepresentation, how do you reconcile this with
+            your assessment of "innovation" and "paradigm potential" for regional analysis?</li>
+        </ol>
 
         <h4>Updated Verdict</h4>
-        <p class="verdict-revise">⚠️ REVISE</p>
-        <p><em>Genuine methodological advancement undermined by statistical validity concerns.</em></p>
+        <p class="verdict-fail">❌ FAIL</p>
+        <p><em>Misrepresentation of key finding undermines scientific integrity.</em></p>
         </div>
         """, unsafe_allow_html=True)
 
-    with st.expander("🏛️ **POLICYMAKER** - Cross-Examination", expanded=False):
+    with st.expander("🚀 **VISIONARY** - Cross-Examination", expanded=False):
         st.markdown("""
-        <div class="persona-box policymaker-box">
-        <h4>Policy Applicability (Updated)</h4>
-        <p>The paper's core premise—leveraging qualitative insights from the Beige Book using advanced NLP for real-time economic
-        assessment—holds significant promise. The ability to nowcast GDP growth and forecast recessions with regional granularity
-        offers a complementary data source. The identification of regional spillover effects is particularly valuable.</p>
+        <div class="persona-box visionary-box">
+        <h4>Synthesis with Other Agents</h4>
+        <p><strong>With Mathematician:</strong> I accept the Mathematician's finding regarding the severe empirical flaw in Table 6, Model (1), where the reported
+        Adjusted R² of -0.111 directly contradicts the authors' claim of "relatively high R Squares." This significantly undermines
+        confidence in the robustness of the regional analysis's empirical demonstration.</p>
 
-        <p><strong>However, the Empiricist identifies a critical flaw:</strong> The reported statistical significance cannot be
-        trusted due to the likely omission of appropriate robust or clustered standard errors. If standard errors are understated,
-        then claims of "meaningful explanatory power" and "superior performance" are undermined.</p>
+        <p>While the <strong>idea</strong> of extracting regional "soft information" remains conceptually novel and impactful, the
+        presented evidence for this particular specification is demonstrably weak and the authors' interpretation is misleading.</p>
 
-        <h4>Cross-Domain Insights</h4>
-        <p>My initial assessment of policy relevance is largely validated by both peer reports regarding innovative NLP application
-        and novel regional analysis. The Empiricist acknowledges the "rich and novel dataset" and "sound choice" of FinBERT, while
-        the Historian praises genuine methodological advancement.</p>
+        <p><strong>With Historian:</strong> I fully embrace the Historian's assessment that this paper addresses genuine gaps by leveraging "new machine learning models"
+        for a more sophisticated analysis of the Beige Book. The systematic extraction of soft information at a regional level
+        represents a significant conceptual advancement.</p>
 
-        <p><strong>However, while the Historian gives a "PASS" initially, this claim is directly contradicted by the Empiricist's
-        critical finding about standard errors.</strong> The methodological soundness for quantitative claims is not as "appropriate"
-        as suggested.</p>
+        <h4>Constructive Pushback</h4>
+        <p>While the Historian identifies "regional granularity" as a key gap filled by this paper, the Mathematician's audit reveals
+        a critical weakness in the empirical evidence. The discrepancy means that while the <strong>idea</strong> of filling this gap
+        is novel and conceptually powerful, the <strong>demonstration</strong> of its success is empirically unsound.</p>
 
-        <h4>Clarification Request</h4>
-        <ul>
-            <li><strong>To Empiricist:</strong> Could you provide a concrete example where a currently significant coefficient is
-            susceptible to becoming insignificant if proper standard errors were applied, and explain the policy implication?</li>
-            <li><strong>To Historian:</strong> Given the Empiricist's finding of critical flaw in statistical validity, how do you
-            reconcile your assessment that the paper "fills gaps convincingly"?</li>
-        </ul>
+        <h4>Questions for Authors</h4>
+        <ol>
+            <li><strong>To Mathematician:</strong> Given that Model (2) shows positive Adjusted R² (0.232), does the flaw in Model (1)
+            entirely invalidate the conceptual claim of regional insights, or only the specific demonstration in Model (1)?</li>
+            <li><strong>To Historian:</strong> How does the negative Adjusted R² affect your assessment of the paper's success in
+            "directly filling this void" regarding regional granularity?</li>
+        </ol>
 
         <h4>Updated Verdict</h4>
-        <p class="verdict-revise">⚠️ REVISE</p>
-        <p><em>Strong conceptual contribution, but empirical execution insufficient.</em></p>
+        <p class="verdict-pass">✅ PASS (with strong reservations)</p>
+        <p><em>Conceptual novelty remains, though empirical demonstration is flawed.</em></p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -751,6 +730,139 @@ with tab2:
 
     # ROUND 2B: Verdict Trajectory Analysis
     st.markdown('<div class="round-header">📊 ROUND 2B: VERDICT TRAJECTORY ANALYSIS</div>', unsafe_allow_html=True)
+
+    # Create trajectory diagram using columns for better rendering (3 agents only)
+    col_m, col_h, col_v = st.columns(3)
+
+    with col_m:
+        st.markdown("""
+        <div style="text-align: center;">
+            <div style="background: #e3f2fd; border: 3px solid #1976d2; border-radius: 10px; padding: 15px; margin-bottom: 10px;">
+                <strong style="color: #1976d2;">🔢 Mathematician</strong><br/>
+                <span style="font-size: 24px;">❌</span><br/>
+                <span style="font-size: 12px; color: #666;">Round 1: FAIL</span>
+            </div>
+            <div style="font-size: 40px; color: #666; text-align: center;">↓</div>
+            <div style="background: #ffebee; padding: 8px; border-radius: 5px; font-size: 11px; font-weight: bold; color: #c62828; margin: 10px 0;">
+                NO CHANGE
+            </div>
+            <div style="font-size: 40px; color: #666; text-align: center;">↓</div>
+            <div style="background: #e3f2fd; border: 3px solid #1976d2; border-radius: 10px; padding: 15px; margin-top: 10px;">
+                <span style="font-size: 24px;">❌</span><br/>
+                <span style="font-size: 12px; color: #666;">Round 2a: FAIL</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_h:
+        st.markdown("""
+        <div style="text-align: center;">
+            <div style="background: #f3e5f5; border: 3px solid #7b1fa2; border-radius: 10px; padding: 15px; margin-bottom: 10px;">
+                <strong style="color: #7b1fa2;">📚 Historian</strong><br/>
+                <span style="font-size: 24px;">✅</span><br/>
+                <span style="font-size: 12px; color: #666;">Round 1: PASS</span>
+            </div>
+            <div style="font-size: 40px; color: #666; text-align: center;">↓</div>
+            <div style="background: #e3f2fd; padding: 8px; border-radius: 5px; font-size: 11px; font-weight: bold; color: #1976d2; margin: 10px 0;">
+                INFLUENCED BY<br/>MATHEMATICIAN
+            </div>
+            <div style="font-size: 40px; color: #666; text-align: center;">↓</div>
+            <div style="background: #f3e5f5; border: 3px solid #7b1fa2; border-radius: 10px; padding: 15px; margin-top: 10px;">
+                <span style="font-size: 24px;">❌</span><br/>
+                <span style="font-size: 12px; color: #666;">Round 2a: FAIL</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_v:
+        st.markdown("""
+        <div style="text-align: center;">
+            <div style="background: #fff3e0; border: 3px solid #f57c00; border-radius: 10px; padding: 15px; margin-bottom: 10px;">
+                <strong style="color: #f57c00;">🚀 Visionary</strong><br/>
+                <span style="font-size: 24px;">✅</span><br/>
+                <span style="font-size: 12px; color: #666;">Round 1: PASS</span>
+            </div>
+            <div style="font-size: 40px; color: #666; text-align: center;">↓</div>
+            <div style="background: #ffebee; padding: 8px; border-radius: 5px; font-size: 11px; font-weight: bold; color: #c62828; margin: 10px 0;">
+                NO CHANGE
+            </div>
+            <div style="font-size: 40px; color: #666; text-align: center;">↓</div>
+            <div style="background: #fff3e0; border: 3px solid #f57c00; border-radius: 10px; padding: 15px; margin-top: 10px;">
+                <span style="font-size: 24px;">✅</span><br/>
+                <span style="font-size: 12px; color: #666;">Round 2a: PASS</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # st.markdown("---")
+    # st.markdown("**Option 2: Verdict-Grouped Flow View**")
+
+    # # Create simpler three-column layout
+    # col_left, col_middle, col_right = st.columns([5, 3, 5])
+
+    # with col_left:
+    #     st.markdown("#### ⚡ ROUND 1")
+    #     st.markdown("""
+    #     <div style="background: #e8f5e9; border: 2px solid #4caf50; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+    #         <div style="text-align: center; font-weight: bold; color: #2e7d32; font-size: 16px; margin-bottom: 10px;">✅ PASS</div>
+    #         <div style="background: #f3e5f5; border: 2px solid #7b1fa2; border-radius: 6px; padding: 8px; margin: 5px 0;">
+    #             <span style="color: #7b1fa2; font-weight: bold;">📚 Historian →</span>
+    #         </div>
+    #         <div style="background: #fff3e0; border: 2px solid #f57c00; border-radius: 6px; padding: 8px; margin: 5px 0;">
+    #             <span style="color: #f57c00; font-weight: bold;">🚀 Visionary →</span>
+    #         </div>
+    #     </div>
+    #     <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 8px; padding: 15px;">
+    #         <div style="text-align: center; font-weight: bold; color: #c62828; font-size: 16px; margin-bottom: 10px;">❌ FAIL</div>
+    #         <div style="background: #e3f2fd; border: 2px solid #1976d2; border-radius: 6px; padding: 8px; margin: 5px 0;">
+    #             <span style="color: #1976d2; font-weight: bold;">🔢 Mathematician →</span>
+    #         </div>
+    #     </div>
+    #     """, unsafe_allow_html=True)
+
+    # with col_middle:
+    #     st.markdown("<br><br><br>", unsafe_allow_html=True)
+    #     st.markdown("""
+    #     <div style="text-align: center; margin-top: 20px;">
+    #         <div style="margin: 25px 0;">
+    #             <div style="font-size: 32px; color: #7b1fa2;">━━━➤</div>
+    #             <div style="color: #7b1fa2; font-weight: bold; font-size: 10px; line-height: 1.2;">Influenced by<br/>MATHEMATICIAN</div>
+    #         </div>
+    #         <div style="margin: 35px 0;">
+    #             <div style="font-size: 32px; color: #f57c00;">━━━➤</div>
+    #             <div style="color: #f57c00; font-weight: bold; font-size: 10px;">No change</div>
+    #         </div>
+    #         <div style="margin: 80px 0 0 0;">
+    #             <div style="font-size: 32px; color: #1976d2;">━━━➤</div>
+    #             <div style="color: #1976d2; font-weight: bold; font-size: 10px;">No change</div>
+    #         </div>
+    #     </div>
+    #     """, unsafe_allow_html=True)
+
+    # with col_right:
+    #     st.markdown("#### 🔄 ROUND 2A")
+    #     st.markdown("""
+    #     <div style="background: #e8f5e9; border: 2px solid #4caf50; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+    #         <div style="text-align: center; font-weight: bold; color: #2e7d32; font-size: 16px; margin-bottom: 10px;">✅ PASS</div>
+    #         <div style="background: #fff3e0; border: 2px solid #f57c00; border-radius: 6px; padding: 8px; margin: 5px 0;">
+    #             <span style="color: #f57c00; font-weight: bold;">→ 🚀 Visionary</span>
+    #         </div>
+    #     </div>
+    #     <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 8px; padding: 15px;">
+    #         <div style="text-align: center; font-weight: bold; color: #c62828; font-size: 16px; margin-bottom: 10px;">❌ FAIL</div>
+    #         <div style="background: #e3f2fd; border: 2px solid #1976d2; border-radius: 6px; padding: 8px; margin: 5px 0;">
+    #             <span style="color: #1976d2; font-weight: bold;">→ 🔢 Mathematician</span>
+    #         </div>
+    #         <div style="background: #f3e5f5; border: 2px solid #7b1fa2; border-radius: 6px; padding: 8px; margin: 5px 0;">
+    #             <span style="color: #7b1fa2; font-weight: bold;">→ 📚 Historian</span>
+    #         </div>
+    #     </div>
+    #     """, unsafe_allow_html=True)
+
+    # st.markdown("---")
+
+
+    st.markdown("---")
 
     # Create the trajectory table
     st.markdown("""
@@ -793,31 +905,31 @@ with tab2:
         <thead>
             <tr>
                 <th>Round</th>
-                <th>📊 Empiricist</th>
+                <th>🔢 Mathematician</th>
                 <th>📚 Historian</th>
-                <th>🏛️ Policymaker</th>
+                <th>🚀 Visionary</th>
                 <th>Status</th>
             </tr>
         </thead>
         <tbody>
             <tr>
                 <td style="font-weight: bold;">Round 1: Independent</td>
-                <td><span class="verdict-revise-icon">⚠️</span> REVISE</td>
+                <td><span class="verdict-fail-icon">❌</span> FAIL</td>
                 <td><span class="verdict-pass-icon">✅</span> PASS</td>
                 <td><span class="verdict-pass-icon">✅</span> PASS</td>
                 <td><span class="status-mixed">Mixed</span></td>
             </tr>
             <tr>
                 <td style="font-weight: bold;">Round 2A: Cross-Exam</td>
-                <td><span class="verdict-revise-icon">⚠️</span> REVISE</td>
-                <td><span class="verdict-revise-icon">⚠️</span> REVISE</td>
-                <td><span class="verdict-revise-icon">⚠️</span> REVISE</td>
+                <td><span class="verdict-fail-icon">❌</span> FAIL</td>
+                <td><span class="verdict-fail-icon">❌</span> FAIL</td>
+                <td><span class="verdict-pass-icon">✅</span> PASS</td>
                 <td><span class="status-converging">Converging</span></td>
             </tr>
             <tr>
-                <td style="font-weight: bold;">Round 2C: Final</td>
-                <td><span class="verdict-revise-icon">⚠️</span> REVISE</td>
-                <td><span class="verdict-revise-icon">⚠️</span> REVISE</td>
+                <td style="font-weight: bold;">Round 2B: Final</td>
+                <td><span class="verdict-fail-icon">❌</span> FAIL</td>
+                <td><span class="verdict-fail-icon">❌</span> FAIL</td>
                 <td><span class="verdict-revise-icon">⚠️</span> REVISE</td>
                 <td><span class="status-rejected">Rejected</span></td>
             </tr>
@@ -833,20 +945,20 @@ with tab2:
 
     with col1:
         st.markdown("""
-        <div class="persona-box empiricist-box">
-        <h4>📊 Empiricist</h4>
+        <div class="persona-box mathematician-box">
+        <h4>🔢 Mathematician</h4>
         <h5>Insights Absorbed</h5>
-        <p>The cross-examination revealed that while the Policymaker and Historian recognize the paper's conceptual value and
-        methodological advancements, they also acknowledge the critical econometric flaw regarding unspecified standard errors.
-        This issue directly impacts statistical validity of all quantitative findings.</p>
+        <p>I acknowledge the conceptual value and relevance of the research questions highlighted by the Historian and Visionary.</p>
 
-        <h5>Final Assessment</h5>
-        <p>The paper presents a methodologically sound approach using advanced NLP techniques and addresses important gaps in
-        the literature. However, the critical flaw of unspecified standard errors in all regression analyses fundamentally
-        undermines statistical validity of quantitative findings.</p>
+        <h5>Remaining Friction</h5>
+        <ul>
+            <li>Lack of robust standard errors specification</li>
+            <li>No formal stationarity tests</li>
+            <li>Severe misrepresentation of Adjusted R²</li>
+        </ul>
 
-        <p class="verdict-revise"><strong>Final Verdict: ⚠️ REVISE</strong></p>
-        <p><em>Methodologically sound with important gaps addressed, but requires revision for robust econometric inference.</em></p>
+        <p class="verdict-fail"><strong>Final Verdict: ❌ FAIL</strong></p>
+        <p><em>Pervasive econometric issues prevent meeting basic validity standards. Unsalvageable without complete re-estimation.</em></p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -855,36 +967,28 @@ with tab2:
         <div class="persona-box historian-box">
         <h4>📚 Historian</h4>
         <h5>Insights Absorbed</h5>
-        <p>The debate significantly refined my understanding. The Empiricist's rigorous critique regarding unspecified standard
-        errors forced me to re-evaluate the "convincingness" of how quantitative gaps were filled. While the methodology is
-        sound, the evidence presented to support statistical significance is currently unreliable.</p>
+        <p>The Mathematician's cross-examination significantly altered my initial positive assessment. The misrepresentation of negative R² reveals critical flaw in scientific integrity.</p>
 
-        <h5>Final Assessment</h5>
-        <p>The paper proposes genuine advancements in applying NLP to the Beige Book (FinBERT, LDA) and offers novel regional
-        analysis, addressing real gaps in the literature. However, the critical flaw concerning statistical validity of standard
-        errors fundamentally undermines the "convincingness" of these findings.</p>
+        <h5>Remaining Friction</h5>
+        <p>The authors' claim to fill the regional analysis gap is directly contradicted by presented evidence and its misinterpretation.</p>
 
-        <p class="verdict-revise"><strong>Final Verdict: ⚠️ REVISE</strong></p>
-        <p><em>Genuine advancements and novel analysis, but requires statistical rigor before full acceptance.</em></p>
+        <p class="verdict-fail"><strong>Final Verdict: ❌ FAIL</strong></p>
+        <p><em>Egregious misrepresentation of key finding constitutes critical breach of scientific integrity.</em></p>
         </div>
         """, unsafe_allow_html=True)
 
     with col3:
         st.markdown("""
-        <div class="persona-box policymaker-box">
-        <h4>🏛️ Policymaker</h4>
+        <div class="persona-box visionary-box">
+        <h4>🚀 Visionary</h4>
         <h5>Insights Absorbed</h5>
-        <p>The Empiricist's finding regarding standard errors is a critical flaw that directly impacts statistical validity of
-        quantitative claims. My initial assessment of "robust performance" was premature without proper validation of reported
-        statistical significance.</p>
+        <p>The Mathematician's findings significantly weaken the empirical basis for regional claims. Statistical significance of all coefficients is now questionable.</p>
 
-        <h5>Final Assessment</h5>
-        <p>While the methodological approach (FinBERT, LDA, regional analysis) is innovative and the type of information extracted
-        is inherently valuable, the quantitative evidence supporting its predictive power is currently compromised. However, the
-        paper's overall policy relevance and potential remains significant.</p>
+        <h5>Remaining Friction</h5>
+        <p>The core <em>conceptual</em> contribution—that "anecdotes matter" and systematically applying ML to qualitative documents yields unique insights—still embodies novelty. The issues are with the <strong>proof, not the premise</strong>.</p>
 
         <p class="verdict-revise"><strong>Final Verdict: ⚠️ REVISE</strong></p>
-        <p><em>Strong policy relevance and welfare implications, but statistical rigor required for quantitative claims.</em></p>
+        <p><em>Genuinely novel idea, but empirical execution insufficient. Requires methodological fixes to substantiate claims.</em></p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -897,21 +1001,23 @@ with tab2:
     <div class="persona-box editor-box">
     <h3>🏛️ Senior Editor's Final Decision</h3>
 
-    <h4>Weight Calculation</h4>
-    <ul style="list-style: none; padding-left: 0;">
-        <li>📊 <strong>Empiricist</strong>: Verdict = REVISE (0.5) × Weight = 0.4 = <strong>0.20</strong></li>
-        <li>🏛️ <strong>Policymaker</strong>: Verdict = REVISE (0.5) × Weight = 0.35 = <strong>0.175</strong></li>
-        <li>📚 <strong>Historian</strong>: Verdict = REVISE (0.5) × Weight = 0.25 = <strong>0.125</strong></li>
-    </ul>
-    <p><strong>Total Weighted Score:</strong> 0.20 + 0.175 + 0.125 = <strong>0.50</strong></p>
-
     <h4>Debate Synthesis</h4>
-    <p>The panel unanimously agrees that while the paper presents methodologically sound advancements in NLP application and
-    valuable regional analysis, a critical econometric flaw regarding unspecified standard errors fundamentally undermines
-    the statistical validity of its quantitative findings. This necessitates a revision to ensure robust inference before
-    the paper's claims of predictive power and policy relevance can be fully accepted.</p>
+    <p>The panel converged significantly around the Mathematician's rigorous audit of the paper's empirical validity. The Historian,
+    initially positive, updated their assessment to a "FAIL," explicitly acknowledging that the Mathematician's findings invalidated
+    a core claim of novelty and constituted a critical breach of scientific integrity.</p>
 
-    <h3 style="color: #c62828; margin-top: 30px;">📋 FINAL DECISION: ❌ REJECT AND RESUBMIT</h3>
+    <p>While the Visionary maintained a "REVISE" verdict, acknowledging the paper's strong conceptual contribution, they too conceded
+    that the empirical execution was insufficient to substantiate the claims, noting the issues were with the "proof, not the premise."</p>
+
+    <h4>Final Decision Process</h4>
+    <p><strong>Rule 1: Technical Kill Switch</strong> is directly applied here.</p>
+    <ul>
+        <li>✅ Mathematician marked "FAIL" due to "fatal empirical/math errors"</li>
+        <li>✅ Historian marked "FAIL" citing "critical breach of scientific integrity"</li>
+        <li>Since both marked FAIL for fundamental issues → <strong>PAPER IS REJECTED</strong></li>
+    </ul>
+
+    <h3 style="color: #c62828; margin-top: 30px;">📋 FINAL DECISION: ❌ REJECT</h3>
 
     <hr>
 
@@ -919,35 +1025,36 @@ with tab2:
 
     <p>Dear Authors,</p>
 
-    <p>We have reviewed your manuscript and appreciate the innovative application of NLP techniques, particularly FinBERT and LDA,
-    to the Beige Book for regional economic analysis. The panel recognizes the genuine advancements and the filling of important
-    literature gaps, as noted by all reviewers.</p>
+    <p>Thank you for submitting your manuscript, "Leveraging Soft Information for Economic Insights: An NLP Approach to the Beige Book,"
+    to our journal. We appreciate your efforts and the innovative approach you have taken.</p>
 
-    <p>However, a critical econometric flaw has been identified that fundamentally undermines the statistical validity of your
-    quantitative findings. The Empiricist highlighted the "unspecified nature of standard errors in the regression analyses,"
-    stating this "directly impacts the statistical validity of all quantitative findings, potentially rendering claims of
-    'statistically significant explanatory power' unreliable." The reviewer provided a concrete example showing "how a significant
-    coefficient could become insignificant under clustered standard errors," underscoring the gravity of this issue for your
-    regional analysis.</p>
+    <p>The review panel has completed its assessment, and while the conceptual ambition of your work was noted, particularly in
+    leveraging "soft information" from the Beige Book for regional insights and recession forecasting, the panel has identified
+    <strong>fundamental and pervasive issues with the empirical execution and reporting</strong> that prevent the paper from meeting
+    our journal's standards.</p>
 
-    <p>The Policymaker concurs, noting that this flaw "necessitates a revision of the paper's quantitative claims" and has
-    "tempered [their] initial enthusiasm for the paper's 'robust performance' and 'statistically significant explanatory power'."
-    The Historian also agrees, stating that while the methodology is sound, "the evidence presented to support the statistical
-    significance of the findings is currently unreliable."</p>
-
+    <p><strong>Specifically, the Mathematician identified critical issues:</strong></p>
     <ol>
-        <li><strong>Address the unspecified standard errors in all regression analyses</strong> to ensure robust econometric inference.</li>
-        <li>Specify whether HAC (Heteroskedasticity and Autocorrelation Consistent) standard errors are used for time series data.</li>
-        <li>Specify whether clustered standard errors are used for panel data regressions.</li>
-        <li>Re-evaluate all reported statistical significance with properly specified standard errors.</li>
+        <li>Pervasive lack of explicit declaration regarding robust standard errors across all regression tables (Tables 1-6),
+        rendering all reported statistical significance questionable.</li>
+        <li>Absence of formal stationarity tests for time series variables, crucial for valid inference.</li>
+        <li>Severe misrepresentation of Adjusted R² in Table 6, Model (1), where <strong>-0.111 was reported as "relatively high."</strong>
+        This fundamentally undermines empirical evidence for regional analysis and casts doubt on overall empirical judgment.</li>
     </ol>
 
-    <p style="margin-top: 20px;">We look forward to a revised submission that rectifies these critical statistical issues. Your
-    work addresses an important research question, and with proper econometric rigor, it has the potential to make a significant
-    contribution to the field.</p>
+    <p><strong>The Historian reinforced these concerns:</strong></p>
+    <p>While the paper excelled in contextualizing its work, the authors' misrepresentation of the negative Adjusted R² constituted
+    an "egregious error" and a "critical breach of scientific integrity." This directly undermines the credibility of your claimed
+    novelty in shedding light on regional economic activity, a core contribution you explicitly highlighted.</p>
 
-    <p>Sincerely,<br/>
-    The Editorial Team</p>
+    <p><strong>The Visionary acknowledged:</strong></p>
+    <p>While recognizing the paper's "genuinely novel and field-changing idea" in systematically leveraging "soft information,"
+    they concurred that the current empirical execution is insufficient to fully substantiate these groundbreaking claims.</p>
+
+    <p style="margin-top: 20px;"><strong>Given the fundamental and pervasive nature of these empirical and methodological flaws,
+    which include issues of scientific integrity in reporting findings, the paper cannot be accepted.</strong> The panel concluded
+    that the empirical execution is "fundamentally unsound" and that a "complete re-evaluation and re-estimation of its empirical
+    section" would be necessary, rendering the current manuscript unsuitable for publication.</p>
 
     <p>We wish you success in future endeavors.</p>
 
@@ -965,12 +1072,12 @@ with tab2:
 
         **Strengths of Multi-Agent Debate:**
         - ✅ Constructive discussion encouraged belief updates
-        - ✅ Historian shifted verdict after Empiricist's evidence (PASS → FAIL)
+        - ✅ Historian shifted verdict after Mathematician's evidence (PASS → FAIL)
         - ✅ Cross-domain synthesis prevented single-perspective bias
         - ✅ No significant hallucinations detected in debate
 
         **Points for Consideration:**
-        - ⚠️ Empiricist may be overly punitive on negative adjusted R² issue
+        - ⚠️ Mathematician may be overly punitive on negative adjusted R² issue
         - ⚠️ Title misspecification noted in original paper
         - ⚠️ Personas converge strongly around mathematical evidence
 

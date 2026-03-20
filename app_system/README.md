@@ -7,11 +7,15 @@ This directory contains all files needed to run the Streamlit evaluation apps.
 ```
 app_system/
 ├── app.py                    # Main production app (2 tabs: Referee Report + Section Evaluator)
-├── app_demo.py              # Demo 1: Shows madoutput1.txt results (Adjusted R² issue)
-├── app_demo2.py             # Demo 2: Shows madoutput2.txt results (standard errors issue)
+├── demos/
+│   ├── app_demo.py          # Demo 1: Shows madoutput1.txt results (Adjusted R² issue)
+│   └── app_demo2.py         # Demo 2: Shows madoutput2.txt results (standard errors issue)
 ├── referee.py               # Referee Report Checker workflow (multi-agent debate UI)
 ├── multi_agent_debate.py    # Multi-agent debate orchestration (Rounds 0-3)
 ├── utils.py                 # LLM utilities (single_query, ConversationManager)
+├── docs/
+│   ├── FRAMEWORK.md
+│   └── architecture.md
 ├── section_eval/            # Section evaluator module
 │   ├── main.py             # Section evaluator main class
 │   ├── criteria/           # Evaluation criteria definitions
@@ -29,16 +33,16 @@ app_system/
 ```bash
 cd app_system
 streamlit run app.py          # Main app
-streamlit run app_demo.py     # Demo 1
-streamlit run app_demo2.py    # Demo 2
+streamlit run demos/app_demo.py     # Demo 1
+streamlit run demos/app_demo2.py    # Demo 2
 ```
 
-### From the parent eval directory:
+### From the repository root:
 
 ```bash
 streamlit run app_system/app.py          # Main app
-streamlit run app_system/app_demo.py     # Demo 1
-streamlit run app_system/app_demo2.py    # Demo 2
+streamlit run app_system/demos/app_demo.py     # Demo 1
+streamlit run app_system/demos/app_demo2.py    # Demo 2
 ```
 
 ## Key Dependencies
@@ -72,19 +76,10 @@ app.py
 - **Model**: `model_selection` = Claude Sonnet 4.5
 - **Temperature**: 0.3 (more conservative for scoring)
 
-## What Stayed in Parent Directory
-
-The following files remain in the parent `eval/` directory as they are experimental, legacy, or documentation:
-- `madexp.py`, `madexp2.py`, `madexp2_local.py` - Experimental/Colab scripts
-- `section_eval.py`, `section_eval_new.py`, `section_eval_vivi_0223.py`, `section_eval_llm_vivi.py` - Legacy section evaluator versions
-- `routing.py` - Routing utilities
-- All `.md` documentation files (CRITERIA_MATRIX.md, ARCHITECTURE.md, etc.)
-- `changelog/` and `comparative results/` directories
-
 ## Notes
 
-- All imports within `app_system/` are relative and should work correctly
+- Demo apps in `demos/` add the parent `app_system/` directory to `sys.path` so shared imports resolve correctly
 - The `section_eval/` directory is a self-contained module
 - Demo apps load pre-generated debate transcripts from `madoutput1.txt` and `madouput2.txt`
 - For development, edit files in this directory
-- For documentation updates, edit markdown files in parent `eval/` directory
+- Architecture and framework docs live in `app_system/docs/`
