@@ -4,6 +4,8 @@ Streamlit UI for the Section Evaluator workflow.
 Entry point: instantiate SectionEvaluatorApp and call render_ui(files).
 """
 
+import csv
+import io
 import streamlit as st
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -602,10 +604,19 @@ class SectionEvaluatorApp:
             sc = result.get("section_score", {})
             raw = sc.get("raw_score", 3.0)
 
+            fatal_triggered = sc.get("fatal_flaw_triggered", False)
+            fatal_label = " ⚠️ FATAL FLAW" if fatal_triggered else ""
             with st.expander(
-                f"**{section_name}** — Score: {raw:.1f}/5.0 (adjusted: {sc.get('adjusted_score', raw):.1f})",
+                f"**{section_name}** — Score: {raw:.1f}/5.0 (adjusted: {sc.get('adjusted_score', raw):.1f}){fatal_label}",
                 expanded=False,
             ):
+                if fatal_triggered:
+                    flaw_crits = sc.get("fatal_flaw_criteria", [])
+                    st.error(
+                        f"**Fatal flaw detected.** The following critical criterion scored ≤ 1.5, "
+                        f"capping the section score at 2.5: **{', '.join(flaw_crits)}**. "
+                        "This indicates a fundamental issue that must be resolved before the section can score higher."
+                    )
                 st.progress(score_bar_html(raw))
 
                 # Qualitative assessment
@@ -626,8 +637,10 @@ class SectionEvaluatorApp:
                     q2 = ev.get("quote_2", {})
 
                     score_color = "🟢" if score >= 4 else "🟡" if score == 3 else "🔴"
+                    is_fatal = ev.get("is_fatal_criterion", False)
+                    fatal_badge = " <span style='color:#c0392b;font-size:0.8em;font-weight:bold'>CRITICAL</span>" if is_fatal else ""
                     st.markdown(
-                        f"**{criterion}** {score_color} {score}/5 "
+                        f"**{criterion}**{fatal_badge} {score_color} {score}/5 "
                         f"<span style='color:gray;font-size:0.85em'>(weight {weight:.0%})</span>",
                         unsafe_allow_html=True,
                     )
@@ -685,7 +698,7 @@ class SectionEvaluatorApp:
         st.write("---")
         st.subheader("Download Report")
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
 
         with col1:
             # Generate markdown report
@@ -711,6 +724,18 @@ class SectionEvaluatorApp:
                 )
             except Exception as e:
                 st.error(f"Error generating PDF: {e}")
+
+        with col3:
+            # Generate CSV report (one row per criterion — useful for benchmarking)
+            csv_data = self._build_csv_report(results, paper_type)
+            st.download_button(
+                label="📊 Download as CSV (scores)",
+                data=csv_data,
+                file_name=f"evaluation_scores_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                help="One row per criterion. Useful for tracking scores over time and benchmarking across papers.",
+            )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -877,6 +902,55 @@ class SectionEvaluatorApp:
 
         # Return PDF as bytes
         return pdf.output(dest='S').encode('latin-1')
+
+    def _build_csv_report(self, results: Dict[str, Any], paper_type: str) -> str:
+        """Generate a CSV with one row per criterion across all sections."""
+        section_scores = {name: res["section_score"] for name, res in results.items()}
+        overall = compute_overall_score(section_scores, paper_type)
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Header
+        writer.writerow([
+            "section", "section_raw_score", "section_adjusted_score", "section_importance_multiplier",
+            "criterion", "criterion_score", "criterion_weight", "criterion_weighted_contribution",
+            "justification", "quote_1", "quote_1_valid", "quote_2", "quote_2_valid",
+            "has_fatal_flaw", "fatal_flaw_triggered",
+            "paper_type", "overall_score", "publication_readiness",
+            "eval_timestamp", "model_version",
+        ])
+
+        overall_score = overall["overall_score"]
+        readiness = overall["publication_readiness"]
+
+        for section_name, result in results.items():
+            sc = result.get("section_score", {})
+            raw = sc.get("raw_score", 3.0)
+            adj = sc.get("adjusted_score", raw)
+            imp = sc.get("importance_multiplier", 1.0)
+            timestamp = result.get("eval_timestamp", "")
+            model_ver = result.get("model_version", "")
+            fatal_triggered = sc.get("fatal_flaw_triggered", False)
+
+            for ev in result.get("criteria_evaluations", []):
+                score = ev.get("score", 3)
+                weight = ev.get("weight", 0.25)
+                q1 = ev.get("quote_1", {})
+                q2 = ev.get("quote_2", {})
+                is_fatal = ev.get("is_fatal_criterion", False)
+                writer.writerow([
+                    section_name, raw, adj, imp,
+                    ev.get("criterion", ""), score, weight, round(score * weight, 4),
+                    ev.get("justification", ""),
+                    q1.get("text", ""), q1.get("valid", ""),
+                    q2.get("text", ""), q2.get("valid", ""),
+                    is_fatal, fatal_triggered,
+                    paper_type, overall_score, readiness,
+                    timestamp, model_ver,
+                ])
+
+        return output.getvalue()
 
     def _build_markdown_report(self, results: Dict[str, Any], paper_type: str, overall_text: str = "") -> str:
         """Generate a markdown report from the evaluation results."""
