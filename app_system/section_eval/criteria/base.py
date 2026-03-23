@@ -73,20 +73,20 @@ _UNIVERSAL: Dict[str, List[dict]] = {
 _EMPIRICAL: Dict[str, List[dict]] = {
     "data": [
         {"name": "source",        "weight": 0.15, "description": "Data source clearly identified and described"},
-        {"name": "appropriateness","weight": 0.25, "description": "Data suitable for the research question with clear justification (5=ideal data with detailed justification, 3=adequate but with acknowledged limitations, 1=questionable fit)"},
+        {"name": "appropriateness","weight": 0.25, "critical": True, "description": "Data suitable for the research question with clear justification (5=ideal data with detailed justification, 3=adequate but with acknowledged limitations, 1=questionable fit)"},
         {"name": "limitations",   "weight": 0.30, "description": "Selection bias, measurement error, coverage gaps honestly acknowledged with depth (5=thorough discussion of implications, 3=mentioned but superficial, 1=ignored or dismissed)"},
         {"name": "sample",        "weight": 0.15, "description": "Sample size, time period, geographic scope clear"},
         {"name": "variables",     "weight": 0.15, "description": "Key variables operationally defined with measurement details"},
     ],
     "methodology": [
         {"name": "specification",      "weight": 0.20, "description": "Econometric model clearly specified"},
-        {"name": "identification",     "weight": 0.30, "description": "Causal identification approach rigorously justified (5=compelling argument with falsification tests, 3=standard approach adequately justified, 1=weak or circular reasoning)"},
+        {"name": "identification",     "weight": 0.30, "critical": True, "description": "Causal identification approach rigorously justified (5=compelling argument with falsification tests, 3=standard approach adequately justified, 1=weak or circular reasoning)"},
         {"name": "assumptions",        "weight": 0.20, "description": "Key assumptions stated and defended, not merely asserted"},
         {"name": "robustness_depth",   "weight": 0.20, "description": "Robustness approach is comprehensive and pre-specified (5=extensive sensitivity analysis across specifications/samples/measures, 3=basic checks, 1=minimal or ad hoc)"},
         {"name": "replicability",      "weight": 0.10, "description": "Sufficient detail for replication"},
     ],
     "results": [
-        {"name": "alignment",          "weight": 0.20, "description": "Results directly address the stated research question"},
+        {"name": "alignment",          "weight": 0.20, "critical": True, "description": "Results directly address the stated research question"},
         {"name": "interpretation_depth","weight": 0.30, "description": "Results interpreted with depth: economic magnitude quantified, mechanisms explained, compared to prior work (5=multi-faceted interpretation with decomposition, 3=basic magnitude discussion, 1=only reports significance stars)"},
         {"name": "honesty",            "weight": 0.20, "description": "Unexpected, null, or contradictory results acknowledged and explained (5=transparent discussion with potential explanations, 3=acknowledged briefly, 1=ignored or cherry-picked)"},
         {"name": "calibration",        "weight": 0.15, "description": "Results calibrated to real-world context: effect sizes compared to benchmarks, policy implications quantified"},
@@ -96,15 +96,15 @@ _EMPIRICAL: Dict[str, List[dict]] = {
 
 _THEORETICAL: Dict[str, List[dict]] = {
     "model_setup": [
-        {"name": "assumptions",        "weight": 0.25, "description": "All assumptions explicitly and clearly stated"},
+        {"name": "assumptions",        "weight": 0.25, "critical": True, "description": "All assumptions explicitly and clearly stated"},
         {"name": "notation",           "weight": 0.10, "description": "Mathematical notation consistent and defined"},
         {"name": "motivation",         "weight": 0.25, "description": "Modeling choices economically motivated with depth (5=profound justification connecting theory to real-world phenomena, 3=standard textbook motivation, 1=ad hoc)"},
         {"name": "sophistication",     "weight": 0.25, "description": "Model represents theoretical advancement beyond routine application (5=novel framework or creative extension, 3=competent standard approach, 1=trivial or derivative)"},
         {"name": "relation_to_lit",    "weight": 0.15, "description": "Builds meaningfully on existing models with clear differentiation"},
     ],
     "proofs": [
-        {"name": "correctness",        "weight": 0.20, "description": "No mathematical errors in derivations"},
-        {"name": "rigor",              "weight": 0.25, "description": "Technical conditions handled properly: convergence explicitly derived, transversality stated, edge cases addressed (5=complete rigorous treatment, 3=basic correct derivation, 1=hand-waving)"},
+        {"name": "correctness",        "weight": 0.20, "critical": True, "description": "No mathematical errors in derivations"},
+        {"name": "rigor",              "weight": 0.25, "critical": True, "description": "Technical conditions handled properly: convergence explicitly derived, transversality stated, edge cases addressed (5=complete rigorous treatment, 3=basic correct derivation, 1=hand-waving)"},
         {"name": "economic_depth",     "weight": 0.25, "description": "Economic mechanisms explained with depth beyond surface intuition: provides decomposition, welfare analysis, multi-layered interpretation (5=profound insights, 3=adequate one-sentence explanation, 1=tautological)"},
         {"name": "sophistication",     "weight": 0.15, "description": "Analysis advances beyond routine techniques (5=novel theoretical insight, 3=competent standard analysis, 1=trivial)"},
         {"name": "clarity",            "weight": 0.15, "description": "Derivation clear and accessible to expert readers"},
@@ -140,8 +140,8 @@ _POLICY: Dict[str, List[dict]] = {
 _FINANCE: Dict[str, List[dict]] = {
     "identification_strategy": [
         {"name": "endogeneity",        "weight": 0.25, "description": "Sources of endogeneity comprehensively identified with theoretical grounding"},
-        {"name": "instrument_validity","weight": 0.30, "description": "IV, RDD, or DiD design rigorously justified (5=compelling with tests, 3=adequate defense, 1=assertions without evidence)"},
-        {"name": "exclusion",          "weight": 0.25, "description": "Exclusion restriction argued convincingly with institutional detail and economic reasoning (5=thorough multi-pronged argument, 3=standard defense, 1=assumed without discussion)"},
+        {"name": "instrument_validity","weight": 0.30, "critical": True, "description": "IV, RDD, or DiD design rigorously justified (5=compelling with tests, 3=adequate defense, 1=assertions without evidence)"},
+        {"name": "exclusion",          "weight": 0.25, "critical": True, "description": "Exclusion restriction argued convincingly with institutional detail and economic reasoning (5=thorough multi-pronged argument, 3=standard defense, 1=assumed without discussion)"},
         {"name": "falsification",      "weight": 0.20, "description": "Falsification tests strengthen identification (5=multiple pre-specified tests, 3=basic placebo/pre-trend, 1=none or weak)"},
     ],
     "robustness_checks": [
@@ -402,12 +402,17 @@ _KEYWORD_MAP: List[Tuple[str, str]] = [
 ]
 
 # Default fallback criteria when no specific match exists
+# Note: no critical=True here — generic sections don't have known fatal-flaw criteria
 _FALLBACK_CRITERIA: List[dict] = [
     {"name": "clarity",          "weight": 0.25, "description": "Writing is clear and accessible"},
     {"name": "depth",            "weight": 0.25, "description": "Topic treated with appropriate depth"},
     {"name": "relevance",        "weight": 0.25, "description": "Content is relevant to the paper's goals"},
     {"name": "technical_quality","weight": 0.25, "description": "Technical content is accurate and well-executed"},
 ]
+
+# Threshold below which a critical criterion triggers the fatal-flaw section score cap
+FATAL_FLAW_SCORE_THRESHOLD: float = 1.5
+FATAL_FLAW_SCORE_CAP: float = 2.5
 
 # Numbering prefix pattern: strips "1.", "2.1", "I.", "A.", "II." etc. from the front
 _PREFIX_RE = re.compile(

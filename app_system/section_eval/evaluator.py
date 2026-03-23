@@ -3,6 +3,7 @@ Core evaluation orchestration: paper-type-aware, multi-pass evaluation with quot
 """
 
 import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .utils import parse_json_from_text, hash_text, safe_query, extract_short_phrases
@@ -121,12 +122,22 @@ class SectionEvaluator:
             figures_external=figures_external,
         )
 
+        # Record model version and wall-clock timestamp before calling LLM
+        try:
+            from utils import model_selection as _model_ver
+        except ImportError:
+            _model_ver = "unknown"
+        eval_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         raw_response = safe_query(self.llm, prompt, max_chars=16000)
         parsed = parse_json_from_text(raw_response)
 
         if not isinstance(parsed, dict):
             # Fallback: build a minimal result
-            result = self._fallback_result(section_name, section_text, paper_type, criteria, raw_response)
+            result = self._fallback_result(
+                section_name, section_text, paper_type, criteria, raw_response,
+                eval_timestamp=eval_timestamp, model_version=_model_ver,
+            )
             self._cache[cache_key] = result
             return result
 
@@ -154,6 +165,8 @@ class SectionEvaluator:
             "section_score": section_score,
             "paper_type": paper_type,
             "section_name": section_name,
+            "eval_timestamp": eval_timestamp,
+            "model_version": _model_ver,
         }
 
         self._cache[cache_key] = result
@@ -295,6 +308,7 @@ Produce EXACTLY this output format:
                     "justification": str(item.get("justification", "")),
                     "quote_1": {"text": str(q1.get("text", "")), "supports_assessment": q1.get("supports_assessment", True)},
                     "quote_2": {"text": str(q2.get("text", "")), "supports_assessment": q2.get("supports_assessment", True)},
+                    "is_fatal_criterion": bool(meta.get("critical", False)),
                 })
 
         # If we got fewer criteria than expected, fill gaps with defaults
@@ -309,6 +323,7 @@ Produce EXACTLY this output format:
                     "justification": "(Not evaluated)",
                     "quote_1": {"text": "", "supports_assessment": True},
                     "quote_2": {"text": "", "supports_assessment": True},
+                    "is_fatal_criterion": bool(c.get("critical", False)),
                 })
 
         return result
@@ -334,6 +349,8 @@ Produce EXACTLY this output format:
         paper_type: str,
         criteria: List[dict],
         raw_response: str,
+        eval_timestamp: str = "",
+        model_version: str = "",
     ) -> Dict[str, Any]:
         """Build a minimal result when LLM output cannot be parsed."""
         qualitative = raw_response[:500] if raw_response else "Evaluation could not be parsed."
@@ -352,6 +369,7 @@ Produce EXACTLY this output format:
                 "justification": "(Fallback — LLM output not parseable)",
                 "quote_1": {"text": "", "supports_assessment": True, "valid": False},
                 "quote_2": {"text": "", "supports_assessment": True, "valid": False},
+                "is_fatal_criterion": bool(c.get("critical", False)),
             }
             for c in criteria
         ]
@@ -365,5 +383,7 @@ Produce EXACTLY this output format:
             "section_score": section_score,
             "paper_type": paper_type,
             "section_name": section_name,
+            "eval_timestamp": eval_timestamp,
+            "model_version": model_version,
             "_fallback": True,
         }

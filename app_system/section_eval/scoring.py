@@ -91,18 +91,26 @@ def compute_section_score(
     """
     Compute weighted section score from criteria evaluation results.
 
+    Fatal-flaw rule: if any criterion marked critical=True scores ≤ FATAL_FLAW_SCORE_THRESHOLD,
+    the raw_score is capped at FATAL_FLAW_SCORE_CAP regardless of the weighted average.
+    This prevents high scores on other criteria from masking a fundamental flaw.
+
     Args:
-        criteria_evaluations: list of dicts with keys: criterion, score, weight
+        criteria_evaluations: list of dicts with keys: criterion, score, weight, is_fatal_criterion
         section_name: human-readable section name
         paper_type: e.g. "empirical"
 
     Returns dict with:
-        raw_score: weighted average of criteria scores (1-5 scale)
+        raw_score: weighted average of criteria scores (1-5 scale), possibly capped
         adjusted_score: raw_score * section importance multiplier
         importance_multiplier: float
         criteria_breakdown: {criterion: score}
         weight_breakdown: {criterion: weight}
+        fatal_flaw_triggered: bool
+        fatal_flaw_criteria: list of criterion names that triggered the cap
     """
+    from .criteria.base import FATAL_FLAW_SCORE_THRESHOLD, FATAL_FLAW_SCORE_CAP
+
     if not criteria_evaluations:
         return {
             "raw_score": 3.0,
@@ -110,11 +118,23 @@ def compute_section_score(
             "importance_multiplier": 1.0,
             "criteria_breakdown": {},
             "weight_breakdown": {},
+            "fatal_flaw_triggered": False,
+            "fatal_flaw_criteria": [],
         }
 
     total_weight = sum(c.get("weight", 1.0) for c in criteria_evaluations)
     weighted_sum = sum(c.get("score", 3) * c.get("weight", 1.0) for c in criteria_evaluations)
     raw_score = weighted_sum / total_weight if total_weight > 0 else 3.0
+
+    # Fatal-flaw check: any critical criterion at or below the threshold caps the score
+    fatal_flaw_criteria = [
+        c["criterion"]
+        for c in criteria_evaluations
+        if c.get("is_fatal_criterion", False) and c.get("score", 3) <= FATAL_FLAW_SCORE_THRESHOLD
+    ]
+    fatal_flaw_triggered = len(fatal_flaw_criteria) > 0
+    if fatal_flaw_triggered:
+        raw_score = min(raw_score, FATAL_FLAW_SCORE_CAP)
 
     section_type = _infer_section_type(section_name)
     importance_map = SECTION_IMPORTANCE.get(paper_type, {})
@@ -127,6 +147,8 @@ def compute_section_score(
         "importance_multiplier": importance,
         "criteria_breakdown": {c["criterion"]: c.get("score", 3) for c in criteria_evaluations},
         "weight_breakdown": {c["criterion"]: c.get("weight", 0.25) for c in criteria_evaluations},
+        "fatal_flaw_triggered": fatal_flaw_triggered,
+        "fatal_flaw_criteria": fatal_flaw_criteria,
     }
 
 
