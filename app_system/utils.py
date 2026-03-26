@@ -20,8 +20,8 @@ import logging
 import pdfplumber
 
 # API Configuration
-API_KEY = "sk-rjg7EvJ1zJN35I5I4Jo1dg" # API key
-API_BASE = "https://martinai-preview-api.frb.gov/v1"  # API endpoint
+API_KEY = os.environ["MARTINAI_API_KEY"]
+API_BASE = os.environ["MARTINAI_API_BASE"]
 url_chat_completions = f"{API_BASE}/chat/completions"
 model_selection2 = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 model_selection3 = "anthropic.claude-3-7-sonnet-20250219-v1:0" # Model key

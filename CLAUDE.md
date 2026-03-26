@@ -37,7 +37,15 @@ pip install -r requirements.txt
 
 The app also requires `fpdf` (not in requirements.txt): `pip install fpdf`.
 
-There is no `.env` file support in the current `app_system/utils.py` — API credentials (`API_KEY`, `API_BASE`) and model selections are hardcoded directly in that file. Do not move them to `.env` without updating `utils.py` to load from environment.
+API credentials are loaded from environment variables — **do not hardcode them**:
+- `MARTINAI_API_KEY` (required)
+- `MARTINAI_API_BASE` (required)
+
+Set these before running:
+```bash
+export MARTINAI_API_KEY="your-key-here"
+export MARTINAI_API_BASE="your-internal-base-url"
+```
 
 ## Architecture
 
