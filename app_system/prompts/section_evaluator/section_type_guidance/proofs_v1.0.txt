@@ -1,0 +1,13 @@
+The PROOFS section should:
+- Be mathematically correct with no errors
+- Follow logically from stated assumptions
+- Provide economic intuition alongside mathematics
+- Be complete with no missing steps
+- Address technical conditions (convergence, transversality, parameter restrictions)
+
+**Quality levels:**
+- **Excellent (5)**: Rigorous derivation with convergence conditions explicitly derived; transversality conditions stated; edge cases handled; multi-layered economic interpretation with decomposition or welfare analysis
+- **Adequate (3)**: Mathematically correct with standard steps; basic one-sentence intuition per result; parameters chosen without empirical grounding
+- **Poor (1)**: Mathematical errors; logical gaps; hand-waving instead of rigor; tautological interpretation ("X increases because investors want more X")
+
+Common weaknesses: Mathematical errors, logical gaps, missing economic intuition, omitted convergence conditions.

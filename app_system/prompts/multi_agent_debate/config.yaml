@@ -1,0 +1,61 @@
+# Multi-Agent Debate System - Prompt Configuration
+# This file specifies which version of each prompt to use.
+# Update the version numbers to switch between different prompt iterations.
+
+# Persona System Prompts
+personas:
+  theorist:
+    version: "v1.0"
+    file: "personas/theorist/{version}.txt"
+
+  empiricist:
+    version: "v1.0"
+    file: "personas/empiricist/{version}.txt"
+
+  historian:
+    version: "v1.0"
+    file: "personas/historian/{version}.txt"
+
+  visionary:
+    version: "v1.0"
+    file: "personas/visionary/{version}.txt"
+
+  policymaker:
+    version: "v1.0"
+    file: "personas/policymaker/{version}.txt"
+
+# Debate Round Prompts
+debate_rounds:
+  round_0_selection:
+    version: "v1.0"
+    file: "debate_rounds/round_0_selection/{version}.txt"
+
+  round_2a_cross_exam:
+    version: "v1.0"
+    file: "debate_rounds/round_2a_cross_exam/{version}.txt"
+
+  round_2b_direct_exam:
+    version: "v1.0"
+    file: "debate_rounds/round_2b_direct_exam/{version}.txt"
+
+  round_2c_final_amendment:
+    version: "v1.0"
+    file: "debate_rounds/round_2c_final_amendment/{version}.txt"
+
+  round_3_editor:
+    version: "v1.0"
+    file: "debate_rounds/round_3_editor/{version}.txt"
+
+# Model Configuration (optional)
+model:
+  temperature: 1.0
+  max_tokens:
+    round_0_1_2a_2b: 4096
+    round_2c: 6144
+    round_3_editor: 8192
+  thinking:
+    enabled: false
+    budget_tokens: 2048
+  retry:
+    max_attempts: 3
+    delay_seconds: 5

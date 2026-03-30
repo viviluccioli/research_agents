@@ -1,0 +1,8 @@
+This is a FINANCE / MICROECONOMICS paper. Key characteristics:
+- Studies firm, market, or individual-level phenomena
+- Identification strategy is crucial (endogeneity must be addressed)
+- Robustness checks across specifications are expected
+- May use event studies, DiD, RDD, or IV approaches
+- Should discuss economic magnitude, not just statistical significance
+
+Evaluation emphasis: Identification strategy rigor, robustness of findings, economic magnitude interpretation.

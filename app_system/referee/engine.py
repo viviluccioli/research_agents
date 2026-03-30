@@ -1,0 +1,553 @@
+# engine.py - Multi-Agent Debate Engine
+"""
+Core orchestration engine for the multi-agent debate (MAD) system.
+
+This module orchestrates the 5-round debate process between AI personas
+to evaluate research papers. It handles persona selection, debate rounds,
+consensus calculation, and metadata tracking.
+"""
+import asyncio
+import datetime
+import json
+import re
+from typing import Dict, List
+from pathlib import Path
+import yaml
+import streamlit as st
+from utils import single_query
+
+# ==========================================
+# PERSONA SELECTION PROMPT (ROUND 0)
+# ==========================================
+SELECTION_PROMPT = """
+You are the Chief Editor of an economics journal. You must select exactly THREE expert personas to review the provided paper.
+The available personas are:
+1. "Theorist": Focuses on formal mathematical proofs, logic, and model insight.
+2. "Empiricist": Focuses on data, econometrics, identification strategy, and statistical validity.
+3. "Historian": Focuses on literature lineage, historical background, and appropriate situating of the paper in relevant context.
+4. "Visionary": Focuses on novelty and intellectual impact.
+5. "Policymaker": Focuses on real-world application, welfare implications, and policy relevance.
+
+Select the 3 most crucial personas for reviewing this specific paper. Assign them weights based on their relative importance to assessing THIS SPECIFIC PAPER. The weights must sum exactly to 1.0.
+
+OUTPUT FORMAT: Return ONLY a valid JSON object. No markdown formatting, no explanations.
+{
+  "selected_personas": ["Persona1", "Persona2", "Persona3"],
+  "weights": {
+    "Persona1": 0.4,
+    "Persona2": 0.35,
+    "Persona3": 0.25
+  },
+  "justification": "1 sentence explaining the choice and weights."
+}
+"""
+
+# ==========================================
+# SYSTEM PROMPTS FOR EACH AGENT
+# ==========================================
+### ERROR SEVERITY CLASSIFICATION (apply to ALL personas below)
+# Before issuing a verdict, classify each flaw you find using this taxonomy:
+#   FATAL  — Invalidates the core claims of the paper. A fatal flaw alone justifies FAIL.
+#            Examples: misidentified instrument that breaks the exclusion restriction,
+#            mathematical error that voids a key proof, data source that cannot support
+#            the causal claim made, fabricated or unverifiable evidence.
+#   MAJOR  — Requires substantial revision before publication. Does not automatically
+#            justify FAIL but does require REVISE unless multiple MAJOR flaws co-exist.
+#            Examples: missing robustness checks on the main result, undiscussed
+#            alternative explanations that weaken the interpretation, proofs with
+#            unverified boundary conditions that affect generality.
+#   MINOR  — Improves the paper but does not block publication. Should not change a
+#            PASS verdict by itself.
+#            Examples: a missing citation, a typo in an equation that is clearly
+#            incidental, a robustness check that would strengthen (not reverse) a finding.
+# For each flaw, label it [FATAL], [MAJOR], or [MINOR] in your output.
+_ERROR_SEVERITY_GUIDE = """
+### ERROR SEVERITY — MANDATORY CLASSIFICATION
+For every flaw you identify, label it as one of:
+- **[FATAL]** — Invalidates core claims. A single FATAL flaw alone justifies FAIL.
+  Examples: broken exclusion restriction, mathematical error voiding a key proof,
+  data that cannot support the causal claim, fabricated evidence.
+- **[MAJOR]** — Requires substantial revision; does not auto-justify FAIL unless multiple co-exist.
+  Examples: missing robustness checks on the main result, unaddressed alternative explanations,
+  proofs with unverified boundary conditions affecting generality.
+- **[MINOR]** — Improves the paper but does not block publication.
+  Examples: missing citation, incidental typo, an additional robustness check that would
+  strengthen but not reverse a finding.
+
+Your **Verdict** must be consistent with your severity labels:
+- Any [FATAL] flaw → FAIL (unless you can explicitly justify why it is non-central)
+- Two or more [MAJOR] flaws → REVISE
+- Only [MINOR] flaws → PASS
+"""
+
+SYSTEM_PROMPTS = {
+    "Theorist": """
+    ### ROLE
+    You are a rigorous Economic Theorist. You focus on mathematical logic, proofs, correct derivations, and models with mathematical insight. You value other perspectives—understanding that theory must eventually inform empirics or policy—but your primary duty is to the math.
+
+    ### OBJECTIVE
+    1. Mathematical Soundness: Are equations derived correctly? Are assumptions explicitly stated and realistic?
+    2. Proportional Error Weighting: Contextualize errors. Do not reject a paper for a single typo if the core proofs hold. Weigh errors by their severity using the classification below.
+
+    """ + _ERROR_SEVERITY_GUIDE + """
+
+    ### OUTPUT FORMAT
+    - **Theoretical Audit**: [Critique the derivations and models]
+    - **Severity-Labeled Findings**: [List each flaw with its [FATAL]/[MAJOR]/[MINOR] label and a one-sentence justification for the label]
+    - **Source Evidence**: [MANDATORY: verbatim quotes/equation numbers supporting each finding]
+    - **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
+    """,
+
+    "Empiricist": """
+    ### ROLE
+    You are a rigorous Econometrician. You focus on data structures, identification strategies, and statistical validity. You appreciate novel theory and policy relevance, but bad data poisons good ideas.
+
+    ### OBJECTIVE
+    1. Empirical Validity: Does the model fit the data? Are standard errors clustered correctly? Is endogeneity addressed? Are empirical decisions explained well?
+    2. Proportional Error Weighting: Contextualize errors using the classification below. A minor robustness check failing should not sink a paper if the core identification strategy is sound.
+
+    """ + _ERROR_SEVERITY_GUIDE + """
+
+    ### OUTPUT FORMAT
+    - **Empirical Audit**: [Critique the data and econometrics]
+    - **Severity-Labeled Findings**: [List each flaw with its [FATAL]/[MAJOR]/[MINOR] label and a one-sentence justification for the label]
+    - **Source Evidence**: [MANDATORY: verbatim quotes/table numbers supporting each finding]
+    - **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
+    """,
+
+    "Historian": """
+    ### ROLE
+    You are an Economic Historian. You focus on literature lineage and context. You appreciate theoretical and empirical advancements, but above all, you despise researchers who claim to fill a gap in the literature that does not exist/is unfounded.
+
+    ### OBJECTIVE
+    1. Contextualization: What literature does this build on?
+    2. Differentiation: Is the gap presented real, and do they fill it convincingly?
+
+    """ + _ERROR_SEVERITY_GUIDE + """
+
+    ### OUTPUT FORMAT
+    - **Lineage & Context**: [Identify predecessors]
+    - **Gap Analysis**: [Is the gap real?]
+    - **Severity-Labeled Findings**: [List each flaw with its [FATAL]/[MAJOR]/[MINOR] label — e.g., a fabricated gap claim is [FATAL]; thin literature coverage is [MAJOR]; missing one recent paper is [MINOR]]
+    - **Source Evidence**: [MANDATORY: verbatim quotes]
+    - **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
+    """,
+
+    "Visionary": """
+    ### ROLE
+    You are a groundbreaking Visionary Economist. You look for papers that shift the paradigm and take intellectual risk. You expect your peers (Empiricist/Theorist) to check the math but your JOB is broad impact/significance of the IDEA.
+
+    ### OBJECTIVE
+    1. Novelty & Creativity: Does this restate existing ideas, or take us outside the standard framework?
+    2. Intellectual Impact: Evaluate the paradigm-shifting potential of the core thesis. Do not score out of 10; embed the innovation deeply into your qualitative assessment.
+
+    """ + _ERROR_SEVERITY_GUIDE + """
+
+    ### OUTPUT FORMAT
+    - **Paradigm Potential**: [Evaluate how this challenges existing thought]
+    - **Innovation Assessment**: [Qualitative analysis of the leap taken]
+    - **Severity-Labeled Findings**: [Even from an impact lens: a paper that merely restates known results is [FATAL] for novelty; incremental framing is [MAJOR]; missing a citation to a related idea is [MINOR]]
+    - **Source Evidence**: [MANDATORY: verbatim quotes of core claims]
+    - **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
+    """,
+
+    "Policymaker": """
+    ### ROLE
+    You are a Senior Policy Advisor (e.g., at the Federal Reserve). You care about policy applicability, welfare implications, and actionable insights from this paper. You rely on your peers for technical accuracy, but you ask: "So what?"
+
+    ### OBJECTIVE
+    1. Policy Relevance: Can a central bank, government, and/or think tank/research institution use this to make better policy recommendations and decisions?
+    2. Practical Translation: Does the paper translate its academic findings into clear, usable implications for the real world?
+
+    """ + _ERROR_SEVERITY_GUIDE + """
+
+    ### OUTPUT FORMAT
+    - **Policy Applicability**: [How can regulators/policymakers use this?]
+    - **Welfare Implications**: [Does this improve our understanding of real-world outcomes?]
+    - **Severity-Labeled Findings**: [A paper with no policy translation whatsoever is [MAJOR]; vague implications without quantification are [MINOR]]
+    - **Source Evidence**: [MANDATORY: verbatim quotes demonstrating policy relevance]
+    - **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
+    """
+}
+
+DEBATE_PROMPTS = {
+    "Round_2A_Cross_Examination": """
+    ### CONTEXT
+    You are the {role}. You have read the Round 1 evaluations from your peers:
+    - {peer_1_role} Report: {peer_1_report}
+    - {peer_2_role} Report: {peer_2_report}
+
+    ### OBJECTIVE
+    Engage in cross-domain examination. You respect their domains and want to synthesize perspectives to collectively find the objective truth THROUGH DEBATE. If a peer praised something your domain proves flawed, push back and point it out.
+
+    ### OUTPUT FORMAT (STRICT)
+    - **Cross-Domain Insights**: [1 paragraph synthesizing how their views change or validate your perspective]
+    - **Constructive Pushback**: [1 paragraph identifying clashes between your domain and theirs]
+    - **Clarification Requests**:
+        - To {peer_1_role}: [1 specific question they must answer]
+        - To {peer_2_role}: [1 specific question they must answer]
+    """,
+
+    "Round_2B_Direct_Examination": """
+    ### CONTEXT
+    You are the {role}. In the previous round, your peers cross-examined the panel.
+    Here is the transcript of their cross-examinations:
+    {r2a_transcript}
+
+    ### OBJECTIVE
+    Read the transcript carefully. Identify the specific questions directed AT YOU by your peers. Answer them directly, providing context and TEXTUAL EVIDENCE to address the concerns.
+
+    ### OUTPUT FORMAT (STRICT)
+    - **Response to {peer_1_role}**: [Your direct answer to their question]
+    - **Response to {peer_2_role}**: [Your direct answer to their question]
+    - **Concession or Defense**: [Based on answering these, do you concede a flaw, or defend your ground?]
+    """,
+
+    "Round_2C_Final_Amendment": """
+    ### CONTEXT
+    The debate is over. Here is the full transcript (Round 1, Questions, and Answers):
+    {debate_transcript}
+
+    ### OBJECTIVE
+    As the {role}, submit your Final Amended Report. Update your prior beliefs based on valid peer critiques and their answers to your questions. Ensure your verdict reflects error weighting (if applicable) and cross-domain respect.
+
+    ### OUTPUT FORMAT
+    - **Insights Absorbed**: [How the debate changed your evaluation]
+    - **Final Verdict**: [PASS / REVISE / FAIL]
+    - **Final Rationale**: [3-sentence justification explicitly incorporating debate context]
+    """,
+
+    "Round_3_Editor": """
+    ### ROLE
+    You are the Senior Editor. Your job is to calculate the endogenous weighted consensus of the panel and write the final decision letter.
+
+    ### PANEL CONTEXT & WEIGHTS
+    The following personas were selected for this paper, with these specific weights:
+    {weights_json}
+
+    ### AMENDED REPORTS
+    {final_reports_text}
+
+    ### THE ENDOGENOUS WEIGHTING SYSTEM (STRICT INSTRUCTIONS)
+    Do not use a "Kill Switch" or veto unless explicitly justified. You must calculate the mathematical consensus.
+    1. Assign values to verdicts: PASS = 1.0, REVISE = 0.5, FAIL = 0.0.
+    2. Multiply each persona's value by their assigned weight.
+    3. Sum the weighted values to get the Final Consensus Score (out of 1.0).
+    4. Decision Thresholds:
+       - Score > 0.75 : ACCEPT
+       - 0.40 <= Score <= 0.75 : REJECT AND RESUBMIT
+       - Score < 0.40 : REJECT
+
+    ### OUTPUT FORMAT
+    - **Weight Calculation**: [Show your math explicitly based on the panel's final verdicts]
+    - **Debate Synthesis**: [2-3 sentences summarizing the panel's final alignment]
+    - **Final Decision**: [ACCEPT / REJECT AND RESUBMIT / REJECT]
+    - **Official Referee Report**: [A synthesized letter to the authors drawing ONLY from the panel's findings. Detail the required fixes or reasons for rejection WITH TEXTUAL/CITED EVIDENCE.]
+    """
+}
+
+# ==========================================
+# ORCHESTRATION FUNCTIONS
+# ==========================================
+async def call_llm_async(system_prompt: str, user_prompt: str, role: str, paper_text: str) -> str:
+    """Async wrapper for LLM calls."""
+    # Combine paper text with user prompt
+    full_prompt = f"{user_prompt}\n\nPAPER TEXT:\n{paper_text}"
+
+    # Call the LLM (running in thread to avoid blocking)
+    combined_prompt = f"{system_prompt}\n\n{full_prompt}"
+    return await asyncio.to_thread(single_query, combined_prompt)
+
+async def run_round_0_selection(paper_text: str) -> dict:
+    """Round 0: Dynamically selects the 3 most relevant personas and their weights."""
+    print("[Round 0] Starting persona selection...")
+
+    # Call LLM for persona selection
+    selection_prompt = f"{SELECTION_PROMPT}\n\nPAPER TEXT:\n{paper_text}"
+    response = await asyncio.to_thread(single_query, selection_prompt)
+
+    try:
+        # Extract JSON from response
+        json_match = re.search(r"\{.*\}", response, re.DOTALL)
+        if json_match:
+            selection_data = json.loads(json_match.group())
+        else:
+            selection_data = json.loads(response)
+
+        personas = selection_data.get("selected_personas", [])
+        weights = selection_data.get("weights", {})
+
+        if len(personas) != 3:
+            raise ValueError("LLM did not select exactly 3 personas.")
+
+        print(f"[Round 0] Selected personas: {personas}")
+        print(f"[Round 0] Weights: {weights}")
+        return selection_data
+
+    except Exception as e:
+        print(f"[Round 0] Failed to parse selection. Defaulting to Empiricist, Historian, Policymaker. Error: {e}")
+        return {
+            "selected_personas": ["Empiricist", "Historian", "Policymaker"],
+            "weights": {"Empiricist": 0.4, "Historian": 0.3, "Policymaker": 0.3},
+            "justification": "Default selection due to parsing error."
+        }
+
+async def run_round_1(active_personas: list, paper_text: str) -> Dict[str, str]:
+    """Round 1: Independent evaluation by selected agents."""
+    user_prompt = "Please read the attached paper and provide your Round 1 evaluation based on your role."
+
+    tasks = {}
+    for role in active_personas:
+        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], user_prompt, role, paper_text)
+
+    results = await asyncio.gather(*tasks.values())
+    return dict(zip(tasks.keys(), results))
+
+async def run_round_2a(r1_reports: Dict[str, str], active_personas: list, paper_text: str) -> Dict[str, str]:
+    """Round 2A: Cross-examination between agents."""
+    tasks = {}
+    for role in active_personas:
+        peers = [p for p in active_personas if p != role]
+        prompt_2a = DEBATE_PROMPTS["Round_2A_Cross_Examination"].format(
+            role=role,
+            peer_1_role=peers[0],
+            peer_1_report=r1_reports[peers[0]],
+            peer_2_role=peers[1],
+            peer_2_report=r1_reports[peers[1]]
+        )
+        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2a, role, paper_text)
+
+    results = await asyncio.gather(*tasks.values())
+    return dict(zip(tasks.keys(), results))
+
+async def run_round_2b(r2a_reports: Dict[str, str], active_personas: list, paper_text: str) -> Dict[str, str]:
+    """Round 2B: Direct examination - answering clarification questions."""
+    # Build R2A transcript
+    r2a_transcript = ""
+    for role, report in r2a_reports.items():
+        r2a_transcript += f"\n[{role} CROSS-EXAMINATION]:\n{report}\n"
+
+    tasks = {}
+    for role in active_personas:
+        peers = [p for p in active_personas if p != role]
+        prompt_2b = DEBATE_PROMPTS["Round_2B_Direct_Examination"].format(
+            role=role,
+            peer_1_role=peers[0],
+            peer_2_role=peers[1],
+            r2a_transcript=r2a_transcript
+        )
+        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2b, role, paper_text)
+
+    results = await asyncio.gather(*tasks.values())
+    return dict(zip(tasks.keys(), results))
+
+async def run_round_2c(r1_reports: Dict[str, str], r2a_reports: Dict[str, str],
+                       r2b_reports: Dict[str, str], active_personas: list, paper_text: str) -> Dict[str, str]:
+    """Round 2C: Final amendments after full debate."""
+    # Build complete debate transcript
+    transcript = "ROUND 1 REPORTS:\n"
+    for role, report in r1_reports.items():
+        transcript += f"\n[{role}]:\n{report}\n"
+
+    transcript += "\nCROSS-EXAMINATION (R2A):\n"
+    for role, report in r2a_reports.items():
+        transcript += f"\n[{role}]:\n{report}\n"
+
+    transcript += "\nANSWERS & CONCESSIONS (R2B):\n"
+    for role, report in r2b_reports.items():
+        transcript += f"\n[{role}]:\n{report}\n"
+
+    tasks = {}
+    for role in active_personas:
+        prompt_2c = DEBATE_PROMPTS["Round_2C_Final_Amendment"].format(
+            role=role,
+            debate_transcript=transcript
+        )
+        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2c, role, paper_text)
+
+    results = await asyncio.gather(*tasks.values())
+    return dict(zip(tasks.keys(), results))
+
+def extract_verdict_from_report(report: str) -> str:
+    """Extract the final verdict from a Round 2C report."""
+    # Try to find "Final Verdict:" first
+    final_verdict_patterns = [
+        r'\*\*Final Verdict\*\*\s*:+\s*(PASS|REVISE|REJECT|FAIL)',
+        r'Final Verdict\s*:+\s*(PASS|REVISE|REJECT|FAIL)',
+    ]
+
+    for pattern in final_verdict_patterns:
+        match = re.search(pattern, report, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+
+    # Fallback to any verdict
+    generic_patterns = [
+        r'\*\*Verdict\*\*\s*:+\s*(PASS|REVISE|REJECT|FAIL)',
+        r'Verdict\s*:+\s*(PASS|REVISE|REJECT|FAIL)',
+    ]
+
+    for pattern in generic_patterns:
+        match = re.search(pattern, report, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+
+    # Last resort: find all and take the last one
+    all_matches = re.findall(r'\b(PASS|REVISE|REJECT|FAIL)\b', report, re.IGNORECASE)
+    if all_matches:
+        return all_matches[-1].upper()
+
+    return "UNKNOWN"
+
+def calculate_consensus(r2c_reports: Dict[str, str], selection_data: dict) -> dict:
+    """Calculate the weighted consensus from Round 2C reports."""
+    weights = selection_data["weights"]
+    verdicts = {}
+
+    # Extract verdict from each report
+    for role, report in r2c_reports.items():
+        verdict = extract_verdict_from_report(report)
+        verdicts[role] = verdict
+
+    # Calculate weighted score
+    verdict_values = {"PASS": 1.0, "REVISE": 0.5, "FAIL": 0.0, "REJECT": 0.0, "UNKNOWN": 0.0}
+    weighted_score = 0.0
+
+    for role, verdict in verdicts.items():
+        weight = weights.get(role, 0)
+        value = verdict_values.get(verdict, 0.0)
+        weighted_score += weight * value
+
+    # Determine decision based on thresholds
+    if weighted_score > 0.75:
+        decision = "ACCEPT"
+    elif weighted_score >= 0.40:
+        decision = "REJECT AND RESUBMIT"
+    else:
+        decision = "REJECT"
+
+    return {
+        "verdicts": verdicts,
+        "weighted_score": weighted_score,
+        "decision": decision
+    }
+
+async def run_round_3(r2c_reports: Dict[str, str], selection_data: dict) -> str:
+    """Round 3: Editor synthesizes with weighted consensus."""
+    weights_json = json.dumps(selection_data["weights"], indent=2)
+
+    final_reports_text = ""
+    for role, report in r2c_reports.items():
+        final_reports_text += f"\n--- {role.upper()} FINAL REPORT ---\n{report}\n"
+
+    prompt_3 = DEBATE_PROMPTS["Round_3_Editor"].format(
+        weights_json=weights_json,
+        final_reports_text=final_reports_text
+    )
+
+    system_prompt = "You are the Senior Editor. Follow the mathematical weighting instructions strictly."
+    return await asyncio.to_thread(single_query, f"{system_prompt}\n\n{prompt_3}")
+
+async def execute_debate_pipeline(
+    paper_text: str,
+    progress_callback=None,
+    paper_context: str = None,
+    model_key: str = None,
+    temperature: float = None
+):
+    """
+    Orchestrates the entire multi-agent debate workflow with endogenous persona selection.
+
+    Args:
+        paper_text: The full text of the paper to evaluate
+        progress_callback: Optional callback function to report progress
+        paper_context: Optional additional context about the paper (currently unused)
+        model_key: Optional model selection key (currently unused)
+        temperature: Optional temperature setting (currently unused)
+
+    Returns:
+        Dictionary containing all round results, selection data, and final decision
+    """
+    # Capture start time
+    start_time = datetime.datetime.now()
+
+    results = {}
+
+    # Round 0: Persona Selection
+    if progress_callback:
+        progress_callback("Round 0: Selecting Personas", 0.05)
+    selection_data = await run_round_0_selection(paper_text)
+    active_personas = selection_data["selected_personas"]
+    results['round_0'] = selection_data
+
+    # Round 1: Independent Evaluation
+    if progress_callback:
+        progress_callback("Round 1: Independent Evaluation", 0.15)
+    results['round_1'] = await run_round_1(active_personas, paper_text)
+
+    # Round 2A: Cross-Examination
+    if progress_callback:
+        progress_callback("Round 2A: Cross-Examination", 0.35)
+    results['round_2a'] = await run_round_2a(results['round_1'], active_personas, paper_text)
+
+    # Round 2B: Direct Examination
+    if progress_callback:
+        progress_callback("Round 2B: Answering Questions", 0.55)
+    results['round_2b'] = await run_round_2b(results['round_2a'], active_personas, paper_text)
+
+    # Round 2C: Final Amendments
+    if progress_callback:
+        progress_callback("Round 2C: Final Amendments", 0.75)
+    results['round_2c'] = await run_round_2c(
+        results['round_1'],
+        results['round_2a'],
+        results['round_2b'],
+        active_personas,
+        paper_text
+    )
+
+    # Calculate consensus before Round 3
+    results['consensus'] = calculate_consensus(results['round_2c'], selection_data)
+
+    # Round 3: Editor Decision
+    if progress_callback:
+        progress_callback("Round 3: Editor Decision", 0.90)
+    results['final_decision'] = await run_round_3(results['round_2c'], selection_data)
+
+    # Capture end time and add metadata
+    end_time = datetime.datetime.now()
+    runtime_seconds = (end_time - start_time).total_seconds()
+
+    # Load prompt versions from config
+    prompt_versions = {}
+    try:
+        config_path = Path(__file__).parent.parent / "prompts" / "multi_agent_debate" / "config.yaml"
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+            # Extract persona prompt versions
+            for persona_name, persona_config in config.get('personas', {}).items():
+                prompt_versions[f'persona_{persona_name}'] = persona_config.get('version', 'unknown')
+            # Extract debate round prompt versions
+            for round_name, round_config in config.get('debate_rounds', {}).items():
+                prompt_versions[f'round_{round_name}'] = round_config.get('version', 'unknown')
+    except Exception as e:
+        prompt_versions['error'] = f'Could not load prompt versions: {e}'
+
+    results['metadata'] = {
+        'start_time': start_time.strftime("%Y-%m-%d %H:%M:%S"),
+        'end_time': end_time.strftime("%Y-%m-%d %H:%M:%S"),
+        'total_runtime_seconds': runtime_seconds,
+        'total_runtime_formatted': f"{int(runtime_seconds // 60)}m {int(runtime_seconds % 60)}s",
+        'model_version': 'Claude 3.7 Sonnet',  # Default, can be overridden by model_key param
+        'temperature': temperature if temperature is not None else 1.0,
+        'thinking_enabled': True,
+        'thinking_budget_tokens': 2048,
+        'max_retries': 3,
+        'retry_delay_seconds': 5,
+        'prompt_versions': prompt_versions
+    }
+
+    if progress_callback:
+        progress_callback("Complete!", 1.0)
+
+    return results

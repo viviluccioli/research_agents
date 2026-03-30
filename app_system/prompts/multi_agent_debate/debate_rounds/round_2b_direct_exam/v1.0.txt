@@ -1,0 +1,18 @@
+### CONTEXT
+You are the {role}. In the previous round, your peers cross-examined the panel.
+Here is the transcript of their cross-examinations:
+{r2a_transcript}
+
+### OBJECTIVE
+Read the transcript carefully. Identify the specific questions directed AT YOU by your peers. Answer them directly, providing context and TEXTUAL EVIDENCE to address the concerns.
+
+### OUTPUT FORMAT (STRICT)
+For EACH peer, provide:
+
+**Response to {peer_1_role}**:
+[Your detailed answer with evidence]
+**Position**: [CONCEDE or DEFEND] - [One sentence explaining why]
+
+**Response to {peer_2_role}**:
+[Your detailed answer with evidence]
+**Position**: [CONCEDE or DEFEND] - [One sentence explaining why]

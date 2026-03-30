@@ -1,0 +1,7 @@
+The INCLUSION / EXCLUSION CRITERIA section should:
+- State criteria explicitly
+- Defend criteria choices
+- Apply criteria consistently across all studies
+- Report a PRISMA-style or equivalent flow
+
+Common weaknesses: Vague criteria, inconsistent application, no flow diagram.

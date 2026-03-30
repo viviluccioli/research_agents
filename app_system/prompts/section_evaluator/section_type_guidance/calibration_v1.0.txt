@@ -1,0 +1,12 @@
+The CALIBRATION section should:
+- Source or estimate parameter values with justification
+- Clearly state calibration targets (moments)
+- Evaluate model fit to data
+- Explore sensitivity to key parameter values
+
+**Quality levels:**
+- **Excellent (5)**: Parameters empirically grounded with micro-founded estimates and citations; moments matched quantitatively with formal statistical evaluation; discrepancies acknowledged and discussed; systematic sensitivity analysis
+- **Adequate (3)**: Reasonable parameter values with basic defense; calibration targets clearly stated; qualitative comparison of model to data
+- **Poor (1)**: Ad hoc parameters without justification; fit claimed without evidence; no sensitivity analysis; targets unclear
+
+Common weaknesses: Unjustified parameters, unclear targets, no fit assessment.

@@ -1,0 +1,13 @@
+The LITERATURE REVIEW should:
+- Cover relevant prior work comprehensively
+- Be organized thematically or methodologically (not merely chronologically)
+- Critically engage — evaluate and synthesize, do not just summarize
+- Identify the gap this paper fills
+- Connect prior findings to build toward this paper's contribution
+
+**Quality levels:**
+- **Excellent (5)**: Comprehensive coverage organized thematically; critical synthesis evaluating strengths/limitations of prior work; clear identification of gap with explicit connection to this paper; recent developments included; builds narrative toward contribution
+- **Adequate (3)**: Key papers covered; organized beyond mere chronology; gap identified; some synthesis though may lean toward summary
+- **Poor (1)**: Mere listing of papers without synthesis; missing key citations; no clear gap identification; purely chronological; no critical engagement
+
+Common weaknesses: Mere listing, missing key citations, no critical synthesis, unclear connection to present study.

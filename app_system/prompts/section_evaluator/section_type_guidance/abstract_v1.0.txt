@@ -1,0 +1,7 @@
+The ABSTRACT should:
+- State the research question or purpose
+- Briefly describe the methodology
+- Present key findings
+- Note implications or contributions
+
+Common weaknesses: Vague claims, missing findings, overclaiming, inconsistency with paper content.

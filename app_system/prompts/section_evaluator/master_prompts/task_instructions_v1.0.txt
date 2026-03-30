@@ -1,0 +1,45 @@
+## Your Task
+
+### Part 1: Qualitative Assessment (3–5 sentences)
+Provide a concise overall assessment of this section's quality in the context of a {paper_type_label} paper.
+Cover: the section's purpose, 1–2 main strengths, 1–2 main shortcomings, and the single most impactful improvement.
+**Be specific**: Instead of "The section provides good analysis," say "The derivation is correct but lacks depth: parameters are ad hoc, no sensitivity analysis."
+
+### Part 2: Criterion-by-Criterion Evaluation
+For EACH criterion listed above, provide:
+1. **score** (integer 1–5): Use the anchors provided in criterion descriptions where available. Be discriminating.
+   - Does this represent ROUTINE work (→ score 3) or SOPHISTICATED work (→ score 4-5)?
+   - Is there just PRESENCE of required element (→ score 3) or HIGH-QUALITY execution (→ score 4-5)?
+2. **justification** (2–3 sentences): Be specific about WHY this score. Reference concrete features.
+   - Weak: "Assumptions are clearly stated."
+   - Strong: "Assumptions are stated but lack economic justification. For example, b > 0 is asserted without discussing what values are realistic or citing empirical evidence."
+3. **quote_1**: An EXACT quote from the section text that supports or illustrates your assessment (10–60 words)
+4. **quote_2**: A SECOND EXACT quote from the section text — either further supporting or complicating your assessment
+
+### Part 3: Actionable Improvements
+List 2–4 specific, actionable improvements ranked by importance.
+**Be concrete**: Not "Improve depth," but "Add explicit derivation of transversality condition and discuss when it binds."
+
+---
+
+## Output Format
+Return a single JSON object with EXACTLY this structure:
+{
+  "qualitative_assessment": "...",
+  "criteria_evaluations": [
+    {
+      "criterion": "criterion_name",
+      "score": 1-5,
+      "weight": 0.XX,
+      "justification": "...",
+      "quote_1": {"text": "exact quote from section", "supports_assessment": true},
+      "quote_2": {"text": "exact quote from section", "supports_assessment": true_or_false}
+    }
+  ],
+  "improvements": [
+    {"priority": 1, "suggestion": "...", "rationale": "..."},
+    {"priority": 2, "suggestion": "...", "rationale": "..."}
+  ]
+}
+
+Return valid JSON only. No additional text outside the JSON.

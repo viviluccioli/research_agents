@@ -1,0 +1,8 @@
+This is a MACROECONOMICS paper. Key characteristics:
+- Studies aggregate economic phenomena
+- Often uses DSGE or other structural models
+- Calibration or estimation of model parameters is critical
+- Should match stylized facts or moments in the data
+- Policy experiments and welfare analysis are common
+
+Evaluation emphasis: Model calibration justification, moment matching, policy experiment validity, welfare analysis.

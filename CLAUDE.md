@@ -29,15 +29,90 @@ streamlit run demos/app_demo2.py
 
 ## Setup
 
+### Initial Setup
 ```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+pip install fpdf  # Additional dependency
 ```
 
-The app also requires `fpdf` (not in requirements.txt): `pip install fpdf`.
+### API Configuration
+**IMPORTANT**: API credentials are managed via `.env` file (gitignored).
 
-There is no `.env` file support in the current `app_system/utils.py` — API credentials (`API_KEY`, `API_BASE`) and model selections are hardcoded directly in that file. Do not move them to `.env` without updating `utils.py` to load from environment.
+```bash
+cd app_system
+
+# Copy the template
+cp .env.example .env
+
+# Edit with your API credentials
+nano .env
+```
+
+The `.env` file contains:
+- `API_KEY` - Your API key
+- `API_BASE` - API endpoint URL
+- `MODEL_PRIMARY`, `MODEL_SECONDARY`, `MODEL_TERTIARY` - Model identifiers
+
+Configuration is loaded by `app_system/config.py` which uses `python-dotenv`. The system supports multiple API providers (OpenAI, Anthropic, Gemini, custom endpoints).
+
+**Never commit `.env` to git** - it's in `.gitignore`.
+
+## File Organization Rules
+
+The `app_system/` directory follows standard Python package organization:
+
+```
+app_system/
+├── app.py                        # Main entry point (tabbed UI)
+├── utils.py                      # Shared utilities
+├── run_app.sh                    # Launch helper
+├── README.md                     # User-facing documentation
+│
+├── referee/                      # Referee report package
+│   ├── __init__.py              # Package exports
+│   ├── core.py                  # Full output version (RefereeReportChecker)
+│   ├── summarized.py            # Summarized version (RefereeReportCheckerSummarized)
+│   ├── debate.py                # Multi-agent debate orchestration
+│   └── summarizer.py            # LLM output compression
+│
+├── section_eval/                 # Section evaluator package
+│   ├── __init__.py
+│   ├── main.py                  # SectionEvaluatorApp
+│   ├── evaluator.py
+│   ├── scoring.py
+│   ├── criteria/                # Criteria registry
+│   └── ...
+│
+├── prompts/                      # External prompt files (versioned)
+│   ├── multi_agent_debate/
+│   └── section_evaluator/
+│
+├── tests/                        # All test files
+│   ├── __init__.py
+│   └── test_*.py
+│
+├── demos/                        # Demo/alternate apps
+│   ├── app_full_output.py       # Full output version demo
+│   ├── app_summarized_only.py   # Summarized-only demo
+│   └── app_demo*.py             # Other demos
+│
+├── docs/                         # Documentation files
+│   ├── architecture.md
+│   ├── changelog.md
+│   ├── FRAMEWORK.md
+│   └── ...                      # All .md files except README.md
+│
+└── results/                      # Output directory
+```
+
+**File placement rules**:
+- **Tests**: All `test_*.py` files go in `tests/`
+- **Documentation**: All `.md` files except `README.md` go in `docs/`
+- **New modules**: Create packages with `__init__.py` (e.g., `referee/`, `section_eval/`)
+- **Demo apps**: Alternate entry points go in `demos/`
+- **No root clutter**: Keep the `app_system/` root clean — only main entry point, utilities, and directories
 
 ## Architecture
 
@@ -49,7 +124,7 @@ The entire working application lives in `app_system/`. The repo root contains on
 
 ```
 app.py
-├── Tab "Referee Report"   → referee.RefereeReportChecker
+├── Tab "Referee Report"   → referee.RefereeReportCheckerSummarized
 └── Tab "Section Evaluator" → section_eval.SectionEvaluatorApp
 ```
 
@@ -98,25 +173,41 @@ This is the core configuration file for the section evaluator. It defines:
 
 **To add a new section alias**: add to `_SECTION_ALIASES` or `_KEYWORD_MAP`.
 
-### Multi-agent debate (`app_system/multi_agent_debate.py` + `referee.py`)
+### Referee report system (`app_system/referee/`)
 
-`execute_debate_pipeline(paper_text)` is an async function that orchestrates 5 rounds:
+The referee package contains the multi-agent debate (MAD) system for generating referee reports.
 
-- **Round 0**: LLM selects 3 of 5 personas (Theorist, Empiricist, Historian, Visionary, Policymaker) and assigns weights summing to 1.0.
-- **Rounds 1, 2A, 2B, 2C**: `asyncio.gather()` runs all selected personas in parallel per round. Each persona receives only the context appropriate for its round (peer reports, Q&A transcript, full debate transcript).
-- **Round 3**: Editor computes weighted consensus (`PASS=1.0, REVISE=0.5, FAIL=0.0`; thresholds: >0.75 → ACCEPT, 0.40–0.75 → RESUBMIT, <0.40 → REJECT) and writes the final referee report.
+**Structure** (see `docs/REFEREE_PACKAGE_STRUCTURE.md` for details):
+```
+referee/
+├── workflow.py          # ⭐ Main production UI (RefereeWorkflow)
+├── engine.py            # ⭐ Debate orchestration (execute_debate_pipeline)
+├── _utils/              # 🔧 Internal helpers
+│   └── summarizer.py    # LLM summarization utilities
+└── _archived/           # 📦 Archived alternate implementations
+    └── full_output_ui.py  # Full verbose UI (not main code path)
+```
 
-`referee.py:RefereeReportChecker` wraps this with the Streamlit UI and calls `asyncio.run(execute_debate_pipeline(...))`.
+**Main components**:
 
-**To add a new persona**: add to `SYSTEM_PROMPTS` in `multi_agent_debate.py` (include the `_ERROR_SEVERITY_GUIDE` block), update the persona list in `SELECTION_PROMPT`, and add the icon/CSS class in `referee.py`.
+- **`referee.workflow`** (`workflow.py`) — `RefereeWorkflow` is the main production UI class used in `app.py`. Uses LLM-powered summarization for clean display.
+
+- **`referee.engine`** (`engine.py`) — `execute_debate_pipeline(paper_text)` orchestrates 5 rounds:
+  - **Round 0**: LLM selects 3 of 5 personas (Theorist, Empiricist, Historian, Visionary, Policymaker) and assigns weights summing to 1.0.
+  - **Rounds 1, 2A, 2B, 2C**: `asyncio.gather()` runs all selected personas in parallel per round. Each persona receives only the context appropriate for its round (peer reports, Q&A transcript, full debate transcript).
+  - **Round 3**: Editor computes weighted consensus (`PASS=1.0, REVISE=0.5, FAIL=0.0`; thresholds: >0.75 → ACCEPT, 0.40–0.75 → RESUBMIT, <0.40 → REJECT) and writes the final referee report.
+
+**To add a new persona**: add to `SYSTEM_PROMPTS` in `referee/engine.py` (include the `_ERROR_SEVERITY_GUIDE` block), update the persona list in `SELECTION_PROMPT`, and add the icon/CSS class in `referee/workflow.py`.
+
+**Import paths**: Use `from referee import RefereeWorkflow, execute_debate_pipeline` to access the main classes and functions. The underscore-prefixed subdirectories (`_utils/`, `_archived/`) contain internal/archived code not part of the main API.
 
 ## Changelog rule
 
-Every change to `app_system/section_eval/` or `app_system/multi_agent_debate.py` must be documented in `app_system/docs/changelog.md`. Format: date header → category (Fix/Feature/Refactor/Performance/UI) → Changed/Added/Removed/Fixed sub-sections.
+Every change to `app_system/section_eval/` or `app_system/referee/` must be documented in `app_system/docs/changelog.md`. Format: date header → category (Fix/Feature/Refactor/Performance/UI) → Changed/Added/Removed/Fixed sub-sections.
 
 ## Key gotchas
 
-- **Import paths**: `section_eval/utils.py` imports from the parent `utils.py` via `from utils import ...`. This only works when Streamlit is launched from `app_system/`. Running from the repo root will break imports.
+- **Import paths**: All packages (`section_eval/`, `referee/`) import from the parent `utils.py` via `from utils import ...`. This only works when Streamlit is launched from `app_system/`. Running from the repo root will break imports. Demo apps in `demos/` add the parent directory to sys.path.
 - **`safe_query` vs `single_query`**: `safe_query` (in `section_eval/utils.py`) bypasses `ConversationManager` and calls the API directly with `model_selection` at temperature 0.3. `single_query` (in `utils.py`) uses `model_selection3` with thinking budget enabled at temperature 1.
 - **Thinking mode**: `single_query` sends `"thinking": {"type": "enabled", "budget_tokens": 2048}` — temperature must be 1 when this is enabled. `safe_query` does not use thinking mode (temperature 0.3).
 - **Cache prefix**: `SectionEvaluator` uses prefix `"se_cache_v3"`, `SectionEvaluatorApp` uses `"se_v3"`. If you change the result schema, bump these prefixes to avoid stale cache hits.

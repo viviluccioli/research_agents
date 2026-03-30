@@ -1,0 +1,6 @@
+The STYLIZED FACTS section should:
+- Document key empirical regularities with evidence
+- Motivate the model being developed
+- Cite data sources for all facts
+
+Common weaknesses: Facts not connected to the model, missing sources, cherry-picked facts.

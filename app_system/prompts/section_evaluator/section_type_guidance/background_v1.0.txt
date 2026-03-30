@@ -1,0 +1,6 @@
+The BACKGROUND section should:
+- Provide the institutional or economic context needed
+- Describe the relevant empirical landscape
+- Frame the problem for the intended audience
+
+Common weaknesses: Too much irrelevant history, insufficient context for the specific question.

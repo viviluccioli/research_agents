@@ -1,15 +1,33 @@
 """
 Prompt templates for paper-type-aware evaluation.
+
+All prompts are now loaded from external versioned files.
+To update prompts, edit files in prompts/section_evaluator/ and update config.yaml.
 """
 
 from typing import List
 from ..criteria.base import PAPER_TYPE_LABELS
+from prompts.section_evaluator.prompt_loader import get_section_evaluator_prompt_loader
 
-# ---------------------------------------------------------------------------
-# Paper-type context prompts
-# ---------------------------------------------------------------------------
+# ==========================================
+# INITIALIZE PROMPT LOADER
+# ==========================================
+# Load all prompts from external versioned files
+_prompt_loader = get_section_evaluator_prompt_loader()
 
-PAPER_TYPE_CONTEXTS = {
+# Load prompts (keeping original variable names for backward compatibility)
+PAPER_TYPE_CONTEXTS = _prompt_loader.get_all_paper_type_contexts()
+SECTION_TYPE_PROMPTS = _prompt_loader.get_all_section_type_guidance()
+
+# All prompts are now loaded from external files via the PromptLoader
+# To update prompts:
+#   1. Edit the .txt files in prompts/section_evaluator/
+#   2. To create a new version, copy an existing file (e.g., v1.0.txt) to a new version (e.g., v1.1.txt)
+#   3. Update config.yaml to point to the new version
+#   4. Call _prompt_loader.reload_prompts() to load the changes (or restart the app)
+
+# Legacy hardcoded prompts (DEPRECATED - kept for reference only)
+_DEPRECATED_PAPER_TYPE_CONTEXTS = {
     "empirical": """This is an EMPIRICAL economics paper. Key characteristics:
 - Uses data to test hypotheses or estimate causal relationships
 - Must have a clear identification strategy for any causal claims
@@ -319,6 +337,11 @@ def build_evaluation_prompt(
     """
     Build the master evaluation prompt for a given paper type, section, and criteria.
     """
+    # Load master prompt templates
+    scoring_philosophy = _prompt_loader.get_master_prompt("scoring_philosophy")
+    sophistication_assessment = _prompt_loader.get_master_prompt("sophistication_assessment")
+    task_instructions = _prompt_loader.get_master_prompt("task_instructions")
+
     paper_type_context = PAPER_TYPE_CONTEXTS.get(paper_type, "")
     section_guidance = SECTION_TYPE_PROMPTS.get(section_type, "")
 
@@ -338,55 +361,12 @@ def build_evaluation_prompt(
     # Build sophistication assessment for theoretical/empirical papers
     sophistication_check = ""
     if paper_type in ["theoretical", "empirical", "finance", "macro"]:
-        sophistication_check = """
----
+        sophistication_check = f"\n---\n\n{sophistication_assessment}\n\n---\n"
 
-## Sophistication Assessment (Complete BEFORE Scoring)
+    # Format task instructions with paper type label substitution
+    formatted_task_instructions = task_instructions.replace("{paper_type_label}", PAPER_TYPE_LABELS.get(paper_type, paper_type))
 
-To ensure discriminating evaluation, assess these dimensions:
-
-**For Theoretical/Model Sections:**
-1. **Mathematical rigor**: Are convergence conditions explicitly derived? Transversality conditions stated? Edge cases handled? Parameter restrictions justified?
-2. **Economic depth**: Does intuition go beyond "X increases with Y"? Are mechanisms decomposed? Welfare implications discussed? Multiple layers of interpretation?
-3. **Parameter realism**: Are parameters calibrated to empirical estimates or chosen ad hoc? Are ranges economically justified?
-4. **Completeness**: Is the full parameter space explored? Sensitivity analysis? Robustness checks across specifications?
-5. **Literature integration**: Does this build meaningfully on specific prior results, or just cite papers generically?
-
-**For Empirical Sections:**
-1. **Identification rigor**: Is the identification strategy convincingly argued with institutional detail, or merely asserted? Are falsification tests included?
-2. **Robustness comprehensiveness**: Are robustness checks extensive and pre-specified, or minimal and confirmatory?
-3. **Economic interpretation**: Are effect sizes calibrated to real-world context? Mechanisms explained? Or just significance stars reported?
-4. **Honesty**: Are null results, anomalies, and cases where results weaken discussed transparently?
-5. **Data appropriateness**: Is data choice rigorously justified, or is fit questionable with limitations dismissed?
-
-**If most answers suggest basic/routine work**, scores should be 3 or below. Reserve 4-5 for sophisticated, rigorous, insightful work.
-
----
-"""
-
-    prompt = f"""You are a senior reviewer for TOP ECONOMICS JOURNALS (JPE, QJE, AER, JF, JFE, RFS).
-
-## Scoring Philosophy - BE DISCRIMINATING
-
-You are evaluating for publication in the most selective journals. **Use the full 1-5 range.**
-
-- **5 (Excellent)**: Publication-ready for top journals. Rigorous, insightful, novel. Pushes boundaries.
-  - Example: Derives convergence conditions explicitly, provides decomposition analysis, calibrates to empirical estimates, discusses welfare implications and policy connections
-
-- **4 (Good)**: Strong work that needs refinement. Would be publishable in top field journals with revision.
-  - Example: Rigorous derivation with some depth, but missing sophistication elements like decomposition or calibration
-
-- **3 (Adequate)**: Meets MINIMUM standards but routine/shallow. Technically correct but no depth.
-  - Example: Correct derivation with standard steps, one-sentence intuition, ad hoc parameters
-
-- **2 (Below Average)**: Significant issues. Major revision needed. Not suitable for top journals.
-  - Example: Derivation has gaps, intuition is superficial, identification weak
-
-- **1 (Poor)**: Fundamental flaws. Not suitable for academic publication.
-  - Example: Mathematical errors, circular reasoning, tautological statements
-
-**CRITICAL**: Papers that merely "check boxes" (have assumptions, have results, mention intuition) should score **3 at most**.
-Avoid compression toward 3-4. If work is routine, score it 3. If insightful and rigorous, score it 4-5. Be honest.
+    prompt = f"""{scoring_philosophy}
 
 ---
 
@@ -412,51 +392,7 @@ Avoid compression toward 3-4. If work is routine, score it 3. If insightful and 
 
 {sophistication_check}
 
-## Your Task
-
-### Part 1: Qualitative Assessment (3–5 sentences)
-Provide a concise overall assessment of this section's quality in the context of a {PAPER_TYPE_LABELS.get(paper_type, paper_type)} paper.
-Cover: the section's purpose, 1–2 main strengths, 1–2 main shortcomings, and the single most impactful improvement.
-**Be specific**: Instead of "The section provides good analysis," say "The derivation is correct but lacks depth: parameters are ad hoc, no sensitivity analysis."
-
-### Part 2: Criterion-by-Criterion Evaluation
-For EACH criterion listed above, provide:
-1. **score** (integer 1–5): Use the anchors provided in criterion descriptions where available. Be discriminating.
-   - Does this represent ROUTINE work (→ score 3) or SOPHISTICATED work (→ score 4-5)?
-   - Is there just PRESENCE of required element (→ score 3) or HIGH-QUALITY execution (→ score 4-5)?
-2. **justification** (2–3 sentences): Be specific about WHY this score. Reference concrete features.
-   - Weak: "Assumptions are clearly stated."
-   - Strong: "Assumptions are stated but lack economic justification. For example, b > 0 is asserted without discussing what values are realistic or citing empirical evidence."
-3. **quote_1**: An EXACT quote from the section text that supports or illustrates your assessment (10–60 words)
-4. **quote_2**: A SECOND EXACT quote from the section text — either further supporting or complicating your assessment
-
-### Part 3: Actionable Improvements
-List 2–4 specific, actionable improvements ranked by importance.
-**Be concrete**: Not "Improve depth," but "Add explicit derivation of transversality condition and discuss when it binds."
-
----
-
-## Output Format
-Return a single JSON object with EXACTLY this structure:
-{{
-  "qualitative_assessment": "...",
-  "criteria_evaluations": [
-    {{
-      "criterion": "criterion_name",
-      "score": 1-5,
-      "weight": 0.XX,
-      "justification": "...",
-      "quote_1": {{"text": "exact quote from section", "supports_assessment": true}},
-      "quote_2": {{"text": "exact quote from section", "supports_assessment": true_or_false}}
-    }}
-  ],
-  "improvements": [
-    {{"priority": 1, "suggestion": "...", "rationale": "..."}},
-    {{"priority": 2, "suggestion": "...", "rationale": "..."}}
-  ]
-}}
-
-Return valid JSON only. No additional text outside the JSON."""
+{formatted_task_instructions}"""
 
     return prompt
 
@@ -465,14 +401,5 @@ Return valid JSON only. No additional text outside the JSON."""
 # Quote validation prompt
 # ---------------------------------------------------------------------------
 
-QUOTE_VALIDATION_PROMPT = """You provided this quote as evidence:
-
-"{quote}"
-
-Check whether this quote appears (possibly with minor OCR/formatting differences) in the section text below.
-Return JSON: {{"found": true/false, "closest_match": "the closest actual text if not found exactly"}}
-
-Section text:
-{section_text}
-
-Return valid JSON only."""
+# Load quote validation prompt from external file
+QUOTE_VALIDATION_PROMPT = _prompt_loader.get_master_prompt("quote_validation")

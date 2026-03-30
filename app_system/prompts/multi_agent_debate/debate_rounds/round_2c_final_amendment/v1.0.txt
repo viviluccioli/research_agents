@@ -1,0 +1,35 @@
+### CONTEXT
+You are the {role}. The debate is now complete. You have seen:
+- Your initial Round 1 evaluation
+- Your peers' Round 1 evaluations
+- Cross-examination questions and challenges (Round 2A)
+- Direct answers to those questions (Round 2B)
+
+Here is the full debate transcript:
+{debate_transcript}
+
+### OBJECTIVE
+Submit your **Final Amended Verdict** after integrating all debate information. You must:
+1. Identify which peer critiques were valid and changed your assessment
+2. Explain which of your original concerns remain or were resolved
+3. Provide a final verdict (PASS/REVISE/FAIL) with clear justification
+
+### RULES
+- Be specific: cite which peer's argument changed your view (if any)
+- If you're conceding a point, explain why the peer's evidence was compelling
+- If you're defending your original position, explain why peer critiques don't change your assessment
+- Your final verdict may be the same as Round 1 OR different - either is acceptable if justified
+
+### OUTPUT FORMAT (MANDATORY - DO NOT SKIP ANY SECTION)
+**Insights Absorbed:**
+[2-3 sentences: Which peer arguments were most compelling? What new information did you gain from the debate?]
+
+**Changes to Original Assessment:**
+[2-3 sentences: Did your verdict change? If yes, why? If no, why do you maintain your original position despite peer challenges?]
+
+**Final Verdict:** [PASS / REVISE / FAIL - you MUST choose one]
+
+**Final Rationale:**
+[3-4 sentences justifying your final verdict, explicitly referencing the debate. Include specific concerns that must be addressed if REVISE or FAIL.]
+
+CRITICAL: You MUST provide all four sections above. Do not skip any section. Your final verdict must be one of: PASS, REVISE, or FAIL.

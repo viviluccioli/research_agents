@@ -1,11 +1,21 @@
-# app.py - Evaluation Agent with tabbed workflows
+# app_full_output.py - Demo with full verbose output (archived version)
+"""
+This demo uses the archived full-output UI that shows uncompressed debate results.
+For production use, see the main app.py which uses the cleaner summarized version.
+"""
 import streamlit as st
-from referee import RefereeWorkflow
+import sys
+from pathlib import Path
+
+# Add parent directory to path so we can import from app_system
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from referee._archived import RefereeReportChecker
 from section_eval import SectionEvaluatorApp
 from utils import cm
 
 WORKFLOWS = {
-    "Referee Report": RefereeWorkflow,
+    "Referee Report (Full Output)": RefereeReportChecker,
     "Section Evaluator": SectionEvaluatorApp,
 }
 
@@ -267,9 +277,54 @@ def main():
 
     _ensure_session_keys()
 
-    # Initialize paper type in session state (used by Section Evaluator tab)
+    # Initialize paper type in session state
     if "paper_type" not in st.session_state:
         st.session_state.paper_type = None
+
+    # ----------------- Paper Type Selection -----------------
+    st.markdown("### 📋 Select Paper Type")
+    st.markdown("Choose the type that best matches your manuscript (affects Section Evaluator criteria):")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("📊 Empirical", use_container_width=True, type="primary" if st.session_state.paper_type == "empirical" else "secondary"):
+            st.session_state.paper_type = "empirical"
+
+    with col2:
+        if st.button("📐 Theoretical", use_container_width=True, type="primary" if st.session_state.paper_type == "theoretical" else "secondary"):
+            st.session_state.paper_type = "theoretical"
+
+    with col3:
+        if st.button("🏛️ Policy", use_container_width=True, type="primary" if st.session_state.paper_type == "policy" else "secondary"):
+            st.session_state.paper_type = "policy"
+
+    if st.session_state.paper_type:
+        paper_type_display = st.session_state.paper_type.capitalize()
+
+        # Color-coded display based on paper type
+        if st.session_state.paper_type == "empirical":
+            st.markdown(f"""
+            <div style="background: white; padding: 15px; border-radius: 8px; border: 3px solid #003d82; margin: 10px 0;">
+                <span style="color: #003d82; font-weight: bold; font-size: 16px;">📊 Selected: {paper_type_display}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        elif st.session_state.paper_type == "theoretical":
+            st.markdown(f"""
+            <div style="background: white; padding: 15px; border-radius: 8px; border: 3px solid #1b5e20; margin: 10px 0;">
+                <span style="color: #1b5e20; font-weight: bold; font-size: 16px;">📐 Selected: {paper_type_display}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        elif st.session_state.paper_type == "policy":
+            st.markdown(f"""
+            <div style="background: white; padding: 15px; border-radius: 8px; border: 3px solid #c62828; margin: 10px 0;">
+                <span style="color: #c62828; font-weight: bold; font-size: 16px;">🏛️ Selected: {paper_type_display}</span>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("💡 Select a paper type above to customize the evaluation criteria")
+
+    st.markdown("---")
 
     # ----------------- Shared File Uploader -----------------
     with st.expander("Document Uploader", expanded=True):

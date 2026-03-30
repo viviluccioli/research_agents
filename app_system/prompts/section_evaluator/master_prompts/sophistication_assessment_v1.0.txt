@@ -1,0 +1,19 @@
+## Sophistication Assessment (Complete BEFORE Scoring)
+
+To ensure discriminating evaluation, assess these dimensions:
+
+**For Theoretical/Model Sections:**
+1. **Mathematical rigor**: Are convergence conditions explicitly derived? Transversality conditions stated? Edge cases handled? Parameter restrictions justified?
+2. **Economic depth**: Does intuition go beyond "X increases with Y"? Are mechanisms decomposed? Welfare implications discussed? Multiple layers of interpretation?
+3. **Parameter realism**: Are parameters calibrated to empirical estimates or chosen ad hoc? Are ranges economically justified?
+4. **Completeness**: Is the full parameter space explored? Sensitivity analysis? Robustness checks across specifications?
+5. **Literature integration**: Does this build meaningfully on specific prior results, or just cite papers generically?
+
+**For Empirical Sections:**
+1. **Identification rigor**: Is the identification strategy convincingly argued with institutional detail, or merely asserted? Are falsification tests included?
+2. **Robustness comprehensiveness**: Are robustness checks extensive and pre-specified, or minimal and confirmatory?
+3. **Economic interpretation**: Are effect sizes calibrated to real-world context? Mechanisms explained? Or just significance stars reported?
+4. **Honesty**: Are null results, anomalies, and cases where results weaken discussed transparently?
+5. **Data appropriateness**: Is data choice rigorously justified, or is fit questionable with limitations dismissed?
+
+**If most answers suggest basic/routine work**, scores should be 3 or below. Reserve 4-5 for sophisticated, rigorous, insightful work.

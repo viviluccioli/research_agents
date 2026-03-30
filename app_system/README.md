@@ -2,6 +2,36 @@
 
 This directory contains all files needed to run the Streamlit evaluation apps.
 
+## Quick Setup
+
+### 1. Configure API Credentials
+```bash
+# Copy the example configuration
+cp .env.example .env
+
+# Edit .env with your API credentials
+nano .env
+```
+
+**Important**: Never commit the `.env` file - it contains your API keys and is gitignored.
+
+### 2. Install Dependencies
+```bash
+cd ..  # Go to repo root
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+pip install fpdf  # Additional dependency
+```
+
+### 3. Run the App
+```bash
+cd app_system
+streamlit run app.py
+```
+
+---
+
 ## Structure
 
 ```
@@ -67,14 +97,20 @@ app.py
 
 ## Configuration
 
-### LLM Settings (utils.py):
-- **Model**: `model_selection3` = Claude 3.7 Sonnet
-- **Temperature**: 0.5 (multi-agent debate)
-- **API Endpoint**: Federal Reserve internal API
+Configuration is managed via `.env` file (loaded by `config.py`):
 
-### Section Evaluator Settings (section_eval/utils.py):
-- **Model**: `model_selection` = Claude Sonnet 4.5
-- **Temperature**: 0.3 (more conservative for scoring)
+### API Settings (.env file):
+- `API_KEY` - Your API key
+- `API_BASE` - API endpoint URL (supports OpenAI, Anthropic, Gemini, custom)
+- `MODEL_PRIMARY` - Primary model (Section Evaluator) - default: Claude Sonnet 4.5
+- `MODEL_SECONDARY` - Secondary model (Referee Debate) - default: Claude 3.7 Sonnet
+- `MODEL_TERTIARY` - Tertiary model (Legacy/Backup)
+
+See `.env.example` for configuration templates for different API providers.
+
+### Temperature Settings:
+- **Referee debate**: Temperature 1.0 (with thinking mode enabled)
+- **Section evaluator**: Temperature 0.3 (more conservative for scoring)
 
 ## Notes
 

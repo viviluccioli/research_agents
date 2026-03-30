@@ -1,0 +1,11 @@
+You provided this quote as evidence:
+
+"{quote}"
+
+Check whether this quote appears (possibly with minor OCR/formatting differences) in the section text below.
+Return JSON: {"found": true/false, "closest_match": "the closest actual text if not found exactly"}
+
+Section text:
+{section_text}
+
+Return valid JSON only.

@@ -1,0 +1,136 @@
+# Section Evaluator - Prompt Configuration
+# This file specifies which version of each prompt to use for paper evaluation.
+
+# Paper Type Context Prompts
+paper_type_contexts:
+  empirical:
+    version: "v1.0"
+    file: "paper_type_contexts/empirical_{version}.txt"
+
+  theoretical:
+    version: "v1.0"
+    file: "paper_type_contexts/theoretical_{version}.txt"
+
+  policy:
+    version: "v1.0"
+    file: "paper_type_contexts/policy_{version}.txt"
+
+  finance:
+    version: "v1.0"
+    file: "paper_type_contexts/finance_{version}.txt"
+
+  macro:
+    version: "v1.0"
+    file: "paper_type_contexts/macro_{version}.txt"
+
+  systematic_review:
+    version: "v1.0"
+    file: "paper_type_contexts/systematic_review_{version}.txt"
+
+# Section Type Guidance Prompts
+section_type_guidance:
+  abstract:
+    version: "v1.0"
+    file: "section_type_guidance/abstract_{version}.txt"
+
+  introduction:
+    version: "v1.0"
+    file: "section_type_guidance/introduction_{version}.txt"
+
+  literature_review:
+    version: "v1.0"
+    file: "section_type_guidance/literature_review_{version}.txt"
+
+  data:
+    version: "v1.0"
+    file: "section_type_guidance/data_{version}.txt"
+
+  methodology:
+    version: "v1.0"
+    file: "section_type_guidance/methodology_{version}.txt"
+
+  model_setup:
+    version: "v1.0"
+    file: "section_type_guidance/model_setup_{version}.txt"
+
+  proofs:
+    version: "v1.0"
+    file: "section_type_guidance/proofs_{version}.txt"
+
+  extensions:
+    version: "v1.0"
+    file: "section_type_guidance/extensions_{version}.txt"
+
+  results:
+    version: "v1.0"
+    file: "section_type_guidance/results_{version}.txt"
+
+  discussion:
+    version: "v1.0"
+    file: "section_type_guidance/discussion_{version}.txt"
+
+  robustness_checks:
+    version: "v1.0"
+    file: "section_type_guidance/robustness_checks_{version}.txt"
+
+  identification_strategy:
+    version: "v1.0"
+    file: "section_type_guidance/identification_strategy_{version}.txt"
+
+  calibration:
+    version: "v1.0"
+    file: "section_type_guidance/calibration_{version}.txt"
+
+  simulations:
+    version: "v1.0"
+    file: "section_type_guidance/simulations_{version}.txt"
+
+  stylized_facts:
+    version: "v1.0"
+    file: "section_type_guidance/stylized_facts_{version}.txt"
+
+  policy_context:
+    version: "v1.0"
+    file: "section_type_guidance/policy_context_{version}.txt"
+
+  recommendations:
+    version: "v1.0"
+    file: "section_type_guidance/recommendations_{version}.txt"
+
+  search_methodology:
+    version: "v1.0"
+    file: "section_type_guidance/search_methodology_{version}.txt"
+
+  inclusion_criteria:
+    version: "v1.0"
+    file: "section_type_guidance/inclusion_criteria_{version}.txt"
+
+  synthesis:
+    version: "v1.0"
+    file: "section_type_guidance/synthesis_{version}.txt"
+
+  conclusion:
+    version: "v1.0"
+    file: "section_type_guidance/conclusion_{version}.txt"
+
+  background:
+    version: "v1.0"
+    file: "section_type_guidance/background_{version}.txt"
+
+# Master Prompt Templates
+master_prompts:
+  scoring_philosophy:
+    version: "v1.0"
+    file: "master_prompts/scoring_philosophy_{version}.txt"
+
+  sophistication_assessment:
+    version: "v1.0"
+    file: "master_prompts/sophistication_assessment_{version}.txt"
+
+  task_instructions:
+    version: "v1.0"
+    file: "master_prompts/task_instructions_{version}.txt"
+
+  quote_validation:
+    version: "v1.0"
+    file: "master_prompts/quote_validation_{version}.txt"

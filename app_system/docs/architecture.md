@@ -782,8 +782,10 @@ else:
 #### 1. API Configuration
 
 ```python
-API_BASE = "https://martinai-preview-api.frb.gov/v1"
-API_KEY = "sk-rjg7EvJ1zJN35I5I4Jo1dg"
+# API Configuration now loaded from .env file via config.py
+# See docs/API_CONFIGURATION.md for setup instructions
+API_BASE = os.getenv("API_BASE")  # Loaded from .env
+API_KEY = os.getenv("API_KEY")    # Loaded from .env
 
 # Model selection
 model_selection3 = "anthropic.claude-3-7-sonnet-20250219-v1:0"  # MAD system
@@ -1035,7 +1037,7 @@ User Upload (PDF/LaTeX/TXT)
 |-----------|-----------|----------------|
 | **UI Framework** | Streamlit | Tab-based interface, file uploaders |
 | **Language Models** | Claude (Anthropic) | 3.7 Sonnet (MAD), 4.5 Sonnet (SE) |
-| **API Endpoint** | Federal Reserve MartinAI | martinai-preview-api.frb.gov |
+| **API Endpoint** | Configured via .env file | See API_CONFIGURATION.md |
 | **PDF Extraction** | pdfplumber | Word-level extraction fallback |
 | **Async Execution** | asyncio | Python 3.7+ native |
 | **Token Counting** | tiktoken | cl100k_base encoding |

@@ -1,0 +1,13 @@
+The ROBUSTNESS CHECKS section should:
+- Test alternative model specifications systematically
+- Check different samples and subgroups
+- Use alternative variable definitions
+- Report results honestly, including when core results weaken
+- Address key threats to inference pre-identified in methodology
+
+**Quality levels:**
+- **Excellent (5)**: Extensive pre-specified robustness checks systematically exploring specifications, samples, and measures; transparent reporting including cases where results weaken with discussion; addresses all major threats to inference
+- **Adequate (3)**: Standard robustness checks included (alternative specs, subsamples, variable definitions); results reported honestly
+- **Poor (1)**: Only confirmatory tests shown; insufficient variation tested; no explanation when results change; cherry-picked robustness checks
+
+Common weaknesses: Only confirmatory tests, insufficient variation, no explanation for cases where results change, selective reporting.

@@ -1,0 +1,7 @@
+The EXTENSIONS section should:
+- Address non-trivial and interesting cases
+- Analyze how changes in parameters affect results (comparative statics)
+- Show that core results are robust
+- Have real-world or theoretical applicability
+
+Common weaknesses: Trivial extensions, no comparative statics, results not robust.

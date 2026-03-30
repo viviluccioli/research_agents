@@ -1,0 +1,8 @@
+This is an EMPIRICAL economics paper. Key characteristics:
+- Uses data to test hypotheses or estimate causal relationships
+- Must have a clear identification strategy for any causal claims
+- Results should discuss both statistical and economic significance
+- Robustness checks are expected
+- Data limitations should be acknowledged
+
+Evaluation emphasis: Data quality, identification strategy validity, statistical rigor, honest limitation acknowledgment.

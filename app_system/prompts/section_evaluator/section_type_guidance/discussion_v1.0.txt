@@ -1,0 +1,7 @@
+The DISCUSSION section should:
+- Interpret results in the context of existing literature
+- Explain the underlying mechanisms
+- Acknowledge limitations honestly
+- Suggest practical or theoretical implications
+
+Common weaknesses: Mere repetition of results, overclaiming, ignoring limitations.

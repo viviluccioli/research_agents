@@ -1,0 +1,7 @@
+The POLICY CONTEXT section should:
+- Accurately describe the policy environment and institutions
+- Provide relevant policy history
+- Identify affected stakeholders
+- Situate the paper in current policy debates
+
+Common weaknesses: Inaccurate institutional description, missing stakeholder analysis.

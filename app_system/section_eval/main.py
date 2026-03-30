@@ -48,55 +48,8 @@ class SectionEvaluatorApp:
     # ------------------------------------------------------------------
 
     def render_ui(self, files: Optional[Dict[str, bytes]] = None, paper_type: Optional[str] = None):
-        st.subheader("Section Evaluator")
+        st.subheader("Section-by-Section Manuscript Evaluation")
         st.write("Evaluate economics paper sections with paper-type-specific criteria, weighted scoring, and quote-backed assessments.")
-
-        # Architecture Overview (collapsible)
-        with st.expander("📐 **View Architecture & Approach**", expanded=False):
-            st.markdown("""
-            <div style="background-color: #f5f5f5; padding: 20px; border-radius: 10px; border: 2px solid #ddd; margin: 20px 0;">
-            """, unsafe_allow_html=True)
-            st.markdown("""
-            ```
-            ┌─────────────────────────────────────────────────────────────┐
-            │              SECTION EVALUATION PIPELINE                     │
-            └─────────────────────────────────────────────────────────────┘
-
-            1️⃣ PAPER TYPE SELECTION
-               └─> Empirical / Theoretical / Policy
-
-            2️⃣ TEXT EXTRACTION & SECTION DETECTION
-               ├─> PDF/LaTeX parsing
-               ├─> Hierarchical section detection
-               └─> Tree-based structure recognition
-                   └─> Example: 2.1 Data → nested under 2. Methodology
-
-            3️⃣ PAPER TYPE-SPECIFIC CRITERIA MAPPING
-               ├─> Empirical: Data, Methodology ⭐, Results
-               ├─> Theoretical: Model Setup, Proofs ⭐, Extensions
-               └─> Policy: Policy Context, Recommendations ⭐, Background
-
-               ⭐ = Highest importance multiplier (1.3-1.4×)
-
-            4️⃣ WEIGHTED SECTION EVALUATION
-               ├─> Per-criterion scoring (1-5)
-               ├─> Criterion weights (sum to 1.0)
-               ├─> Section importance multiplier
-               └─> Adjusted Score = Raw Score × Importance Multiplier
-
-            5️⃣ OVERALL SCORING & FEEDBACK
-               ├─> Overall = Average(adjusted section scores)
-               ├─> Publication Readiness: Not Ready / Major / Minor / Ready
-               └─> Actionable improvements per section
-
-            KEY INSIGHT: Different paper types emphasize different sections.
-            Methodology matters most for empirical (1.3×), proofs for
-            theoretical (1.4×), and recommendations for policy (1.3×).
-            ```
-            """)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        st.markdown("---")
 
         # --- Step 0: Paper type selection ---
         self._render_paper_type_selector()

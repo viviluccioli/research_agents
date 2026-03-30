@@ -1,0 +1,14 @@
+The METHODOLOGY section should:
+- Clearly specify the model or empirical approach
+- Justify the methodological choice
+- State key assumptions explicitly
+- Address identification (for causal claims)
+- Discuss potential threats to validity
+- Plan for robustness checks
+
+**Quality levels:**
+- **Excellent (5)**: Compelling identification argument with institutional detail; falsification tests planned; assumptions defended not just stated; comprehensive robustness plan pre-specified; replication-ready detail
+- **Adequate (3)**: Standard identification approach adequately explained; basic assumptions stated; typical robustness checks mentioned; sufficient detail for replication
+- **Poor (1)**: Weak or circular identification reasoning; endogeneity unaddressed; assumptions hidden; robustness checks absent or ad hoc
+
+Common weaknesses: Unclear specification, unjustified choices, hidden assumptions, weak identification argument.
