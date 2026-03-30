@@ -28,7 +28,26 @@ pip install fpdf               # required for PDF report export
 
 ### 3. Configure API credentials
 
-API credentials are hardcoded in `app_system/utils.py` (`API_KEY`, `API_BASE`, model selections). Update those values directly — there is currently no `.env` loading in the app.
+API credentials are managed via a `.env` file (gitignored for security).
+
+```bash
+cd app_system
+
+# Copy the template
+cp .env.example .env
+
+# Edit with your API credentials
+nano .env  # or use your preferred editor
+```
+
+The `.env` file contains:
+- `API_KEY` — Your API key
+- `API_BASE` — API endpoint URL
+- `MODEL_PRIMARY`, `MODEL_SECONDARY`, `MODEL_TERTIARY` — Model identifiers
+
+Configuration is loaded by `app_system/config.py` using `python-dotenv`. The system supports multiple API providers (OpenAI, Anthropic, Gemini, custom endpoints).
+
+**Important**: Never commit `.env` to git — it's already in `.gitignore`.
 
 ---
 
