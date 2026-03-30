@@ -32,67 +32,127 @@ streamlit run app.py
 
 ---
 
-## Structure
+## Repository Structure
 
 ```
 app_system/
-├── app.py                    # Main production app (2 tabs: Referee Report + Section Evaluator)
-├── demos/
-│   ├── app_demo.py          # Demo 1: Shows madoutput1.txt results (Adjusted R² issue)
-│   └── app_demo2.py         # Demo 2: Shows madoutput2.txt results (standard errors issue)
-├── referee.py               # Referee Report Checker workflow (multi-agent debate UI)
-├── multi_agent_debate.py    # Multi-agent debate orchestration (Rounds 0-3)
-├── utils.py                 # LLM utilities (single_query, ConversationManager)
-├── docs/
-│   ├── FRAMEWORK.md
-│   └── architecture.md
-├── section_eval/            # Section evaluator module
-│   ├── main.py             # Section evaluator main class
-│   ├── criteria/           # Evaluation criteria definitions
-│   ├── prompts/            # Prompt templates
-│   ├── scoring.py          # Scoring calculations
-│   └── utils.py            # Section eval utilities
-├── madoutput1.txt          # Demo 1 multi-agent debate transcript
-└── madouput2.txt           # Demo 2 multi-agent debate transcript (note: typo in filename)
+├── app.py                        # Main entry point (tabbed UI)
+├── utils.py                      # Shared utilities (LLM API wrappers)
+├── config.py                     # Configuration loader (.env file)
+├── run_app.sh                    # Launch helper script
+├── README.md                     # This file
+│
+├── referee/                      # Referee report package (multi-agent debate)
+│   ├── __init__.py              # Package exports
+│   ├── workflow.py              # ⭐ Main production UI (RefereeWorkflow)
+│   ├── engine.py                # ⭐ Debate orchestration (execute_debate_pipeline)
+│   ├── _utils/                  # 🔧 Internal helpers
+│   │   └── summarizer.py        # LLM summarization utilities
+│   ├── _archived/               # 📦 Archived alternate implementations
+│   │   └── full_output_ui.py    # Full verbose UI (not main code path)
+│   └── REFEREE_PACKAGE_STRUCTURE.md  # Package documentation
+│
+├── section_eval/                 # Section evaluator package
+│   ├── __init__.py              # Package exports
+│   ├── main.py                  # SectionEvaluatorApp (main UI class)
+│   ├── evaluator.py             # Core evaluation logic
+│   ├── scoring.py               # Score calculation and aggregation
+│   ├── text_extraction.py       # PDF/LaTeX/text extraction
+│   ├── section_detection.py     # Section detection (heuristic + LLM)
+│   ├── hierarchy.py             # Section hierarchy grouping
+│   ├── utils.py                 # Section eval utilities (safe_query)
+│   ├── criteria/                # Criteria registry
+│   │   ├── __init__.py
+│   │   └── base.py              # Paper types and evaluation criteria
+│   └── prompts/                 # Prompt templates
+│       ├── __init__.py
+│       └── templates.py         # Evaluation prompt builders
+│
+├── prompts/                      # External prompt files (versioned)
+│   ├── multi_agent_debate/      # Referee system prompts
+│   └── section_evaluator/       # Section evaluator prompts
+│
+├── tests/                        # All test files
+│   ├── __init__.py
+│   ├── test_consensus_calculation.py
+│   ├── test_prompt_loader.py
+│   ├── test_referee_display.py
+│   ├── test_referee_quick.py
+│   └── test_section_evaluator_prompts.py
+│
+├── demos/                        # Demo/alternate apps
+│   ├── app_demo.py              # Demo 1: Shows madoutput1.txt results
+│   ├── app_demo2.py             # Demo 2: Shows madoutput2.txt results
+│   ├── app_demo3.py             # Demo 3
+│   ├── app_full_output.py       # Full output version demo
+│   └── app_summarized_only.py   # Summarized-only demo
+│
+├── docs/                         # Documentation files
+│   ├── architecture.md          # System architecture
+│   ├── changelog.md             # Change log
+│   ├── FRAMEWORK.md             # Framework documentation
+│   ├── API_CONFIGURATION.md     # API setup guide
+│   ├── PROMPT_MANAGEMENT.md     # Prompt system docs
+│   ├── PROMPT_QUICKREF.md       # Prompt quick reference
+│   ├── PROMPT_SYSTEM_COMPLETE.md # Complete prompt system docs
+│   ├── REORGANIZATION.md        # Reorganization notes
+│   └── RESTRUCTURING_SUMMARY.md # Restructuring summary
+│
+└── results/                      # Output directory (generated reports)
 ```
 
 ## Running the Apps
 
-### From the app_system directory:
+**IMPORTANT**: The app must be run from inside `app_system/` so that imports resolve correctly (all packages import from the parent `utils.py` via `from utils import ...`).
+
+### Main app:
 
 ```bash
 cd app_system
-streamlit run app.py          # Main app
-streamlit run demos/app_demo.py     # Demo 1
-streamlit run demos/app_demo2.py    # Demo 2
+streamlit run app.py
 ```
 
-### From the repository root:
+Or use the provided script (disables file watcher to avoid inotify limits):
 
 ```bash
-streamlit run app_system/app.py          # Main app
-streamlit run app_system/demos/app_demo.py     # Demo 1
-streamlit run app_system/demos/app_demo2.py    # Demo 2
+cd app_system
+bash run_app.sh
+```
+
+### Demo apps:
+
+```bash
+cd app_system
+streamlit run demos/app_demo.py      # Demo 1: madoutput1.txt
+streamlit run demos/app_demo2.py     # Demo 2: madoutput2.txt
+streamlit run demos/app_demo3.py     # Demo 3
+streamlit run demos/app_full_output.py       # Full verbose output version
+streamlit run demos/app_summarized_only.py   # Summarized-only version
 ```
 
 ## Key Dependencies
 
 ### Multi-Agent Debate Flow:
 ```
-app.py
-  └─ referee.py
-       └─ multi_agent_debate.py
-            └─ utils.py (single_query)
+app.py (Tab: "Referee Report")
+  └─ referee/workflow.py (RefereeWorkflow)
+       └─ referee/engine.py (execute_debate_pipeline)
+            ├─ utils.py (single_query - stateless LLM calls)
+            └─ referee/_utils/summarizer.py (LLM summarization)
 ```
 
 ### Section Evaluator Flow:
 ```
-app.py
-  └─ section_eval/
-       ├─ main.py (SectionEvaluatorApp)
-       ├─ criteria/base.py (evaluation criteria)
-       ├─ prompts/templates.py (prompt templates)
-       └─ utils.py (LLM calls)
+app.py (Tab: "Section Evaluator")
+  └─ section_eval/main.py (SectionEvaluatorApp)
+       ├─ section_eval/text_extraction.py (decode_file)
+       ├─ section_eval/section_detection.py (detect sections)
+       ├─ section_eval/hierarchy.py (group into hierarchy)
+       ├─ section_eval/evaluator.py (SectionEvaluator)
+       │    ├─ section_eval/criteria/base.py (get_criteria)
+       │    ├─ section_eval/prompts/templates.py (build_evaluation_prompt)
+       │    └─ section_eval/utils.py (safe_query - direct API calls)
+       └─ section_eval/scoring.py (compute scores)
 ```
 
 ## Configuration
@@ -114,8 +174,23 @@ See `.env.example` for configuration templates for different API providers.
 
 ## Notes
 
-- Demo apps in `demos/` add the parent `app_system/` directory to `sys.path` so shared imports resolve correctly
-- The `section_eval/` directory is a self-contained module
-- Demo apps load pre-generated debate transcripts from `madoutput1.txt` and `madouput2.txt`
-- For development, edit files in this directory
+### Import Path Requirements
+- **Must run from `app_system/`**: All packages (`section_eval/`, `referee/`) import from the parent `utils.py` via `from utils import ...`. Running from the repo root will break imports.
+- Demo apps in `demos/` add the parent directory to `sys.path` to resolve imports correctly.
+
+### Architecture
+- The `section_eval/` and `referee/` directories are self-contained packages with `__init__.py` exports.
+- `app.py` is the main entry point with a two-tab UI (Referee Report + Section Evaluator).
+- The entire working application lives in `app_system/`. The repo root contains only setup files; `mad_experiments/` and `papers/` are research scratch folders.
+
+### LLM Call Patterns
+- **`single_query()`** (in `utils.py`): Stateless calls used by the MAD system. Uses `model_selection3` (Claude 3.7 Sonnet) at temperature 1.0 with thinking mode enabled.
+- **`safe_query()`** (in `section_eval/utils.py`): Direct API calls used by section evaluator. Uses `model_selection` (Claude Sonnet 4.5) at temperature 0.3, bypasses ConversationManager.
+- **`ConversationManager.conv_query()`**: Stateful conversation management with automatic pruning when tokens exceed 8000.
+
+### Documentation
 - Architecture and framework docs live in `app_system/docs/`
+- See `docs/architecture.md` for detailed system design
+- See `docs/changelog.md` for change history
+- See `referee/REFEREE_PACKAGE_STRUCTURE.md` for referee package details
+- See `docs/PROMPT_MANAGEMENT.md` for prompt system documentation
