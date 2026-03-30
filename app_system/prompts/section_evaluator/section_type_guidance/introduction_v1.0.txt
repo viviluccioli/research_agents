@@ -1,0 +1,7 @@
+The INTRODUCTION should follow the "3 moves" structure:
+1. ESTABLISH TERRITORY: Show topic importance and relevance
+2. ESTABLISH NICHE: Identify gap or problem in existing work
+3. OCCUPY NICHE: State this paper's contribution clearly
+
+Must include: Clear research question, contribution statement, paper roadmap.
+Common weaknesses: Unclear contribution, missing roadmap, inconsistency with conclusion.

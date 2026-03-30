@@ -1,0 +1,7 @@
+The SYNTHESIS section should:
+- Integrate and compare findings across studies
+- Explain heterogeneity across studies
+- Weight conclusions by study quality
+- Identify research gaps
+
+Common weaknesses: Mere listing of results, no quality weighting, gaps not identified.

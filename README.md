@@ -1,153 +1,121 @@
-# Research Evaluation Agents
+# Research Agents — Evaluation Agent for Economics Papers
 
-AI-powered evaluation system for economics research papers using multi-agent debate and section-level assessment.
+A Streamlit application that evaluates academic economics papers using two complementary workflows:
 
-## Overview
+1. **Section Evaluator** — Criteria-based evaluation of individual paper sections, weighted by paper type (empirical, theoretical, policy) and section importance.
+2. **Multi-Agent Referee** — Simulated peer review via structured debate between specialized AI personas (Theorist, Empiricist, Historian, Visionary, Policymaker).
 
-This repository contains a dual-system framework for evaluating economics research:
+The full application lives in `app_system/`.
 
-1. **Multi-Agent Debate (MAD)**: Simulates peer review through debates between specialized AI personas
-2. **Section Evaluator**: Provides detailed, criteria-based scoring of individual sections
+---
 
-Both systems are paper-type aware (empirical/theoretical/policy), require textual evidence for all claims, and use proportional error weighting.
+## Setup
+
+### 1. Create and activate a virtual environment
+
+```bash
+python -m venv venv
+source venv/bin/activate       # macOS/Linux
+# venv\Scripts\activate        # Windows
+```
+
+### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+pip install fpdf               # required for PDF report export
+```
+
+### 3. Configure API credentials
+
+API credentials are hardcoded in `app_system/utils.py` (`API_KEY`, `API_BASE`, model selections). Update those values directly — there is currently no `.env` loading in the app.
+
+---
+
+## Running the App
+
+The app **must be launched from inside `app_system/`** so that relative imports resolve correctly:
+
+```bash
+cd app_system
+streamlit run app.py
+```
+
+Or use the provided script (disables Streamlit's file watcher to avoid system limits):
+
+```bash
+cd app_system
+bash run_app.sh
+```
+
+Demo apps (show pre-generated debate transcripts):
+
+```bash
+cd app_system
+streamlit run demos/app_demo.py    # Demo 1: Adjusted R² issue
+streamlit run demos/app_demo2.py   # Demo 2: Standard errors issue
+```
+
+---
+
+## How It Works
+
+### Section Evaluator
+
+1. Upload a PDF, `.tex`, or `.txt` file, or paste text directly.
+2. Select paper type (Empirical / Theoretical / Policy).
+3. The app auto-detects section boundaries using a two-pass pipeline (heuristic scoring + LLM confirmation).
+4. Each section is evaluated against paper-type-specific criteria with weighted scoring (1–5 per criterion).
+5. A fatal-flaw rule caps any section at 2.5 if a critical criterion (e.g. causal identification, proof correctness) scores ≤ 1.5.
+6. Results include qualitative assessment, per-criterion scores with quote validation, priority improvements, and an overall publication readiness rating.
+7. Export as Markdown, PDF, or CSV (one row per criterion — useful for benchmarking across papers).
+
+### Multi-Agent Referee
+
+1. Upload a manuscript PDF.
+2. Round 0: LLM selects the 3 most relevant personas for this paper and assigns importance weights.
+3. Round 1: All 3 personas evaluate independently in parallel.
+4. Rounds 2A/2B/2C: Structured cross-examination (questions → answers → final amendments).
+5. Round 3: Senior Editor computes weighted consensus and writes a formal referee report.
+6. Export full debate transcript as Markdown.
+
+---
 
 ## Repository Structure
 
 ```
-research_agents-main/
-├── app_system/              # Main evaluation application
-│   ├── README.md           # Detailed setup and usage guide
-│   ├── app_demo2.py        # Streamlit app (main interface)
-│   ├── run_app.sh          # Launch script
-│   ├── multi_agent_debate.py  # MAD orchestration
-│   ├── referee.py          # Referee report workflow
-│   ├── utils.py            # LLM utilities
-│   └── section_eval/       # Section evaluator module
-│       ├── main.py
-│       ├── criteria/       # Evaluation criteria
-│       └── prompts/        # Prompt templates
-├── docs/                    # Documentation
-│   ├── FRAMEWORK.md        # System overview
-│   ├── ARCHITECTURE.md     # Technical architecture
-│   ├── CRITERIA_MATRIX.md  # Evaluation criteria
-│   └── ...                 # Additional documentation
-├── pyproject.toml          # Python dependencies
-└── *.py                    # Experimental/legacy scripts
+research_agents/
+├── app_system/                  # All application code
+│   ├── app.py                   # Streamlit entry point
+│   ├── utils.py                 # LLM infrastructure (single_query, ConversationManager)
+│   ├── referee.py               # Referee Report UI workflow
+│   ├── multi_agent_debate.py    # MAD pipeline orchestration (Rounds 0–3)
+│   ├── run_app.sh               # Launch script
+│   ├── section_eval/            # Section evaluator package
+│   │   ├── evaluator.py         # Core evaluation logic
+│   │   ├── main.py              # Section evaluator UI
+│   │   ├── scoring.py           # Weighted scoring + fatal-flaw floor
+│   │   ├── section_detection.py # Heuristic + LLM section detection
+│   │   ├── text_extraction.py   # PDF/LaTeX/TXT extraction
+│   │   ├── hierarchy.py         # Subsection grouping
+│   │   ├── criteria/base.py     # Criteria registry (paper-type × section)
+│   │   └── prompts/templates.py # Evaluation prompt builder
+│   ├── demos/                   # Pre-generated demo apps
+│   └── docs/                    # Architecture docs and changelog
+├── mad_experiments/             # Research scratch experiments
+├── papers/                      # Sample papers for testing
+├── requirements.txt
+└── CLAUDE.md                    # Guidance for Claude Code
 ```
 
-## Quick Start
+---
 
-### Prerequisites
+## Key Configuration
 
-- Python 3.8+
-- Access to Federal Reserve internal API endpoint
-- API key for Claude models
-
-### Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd research_agents-main
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install streamlit pandas numpy requests tqdm pdfplumber tiktoken
-   ```
-
-   Or use pyproject.toml:
-   ```bash
-   pip install -e .
-   ```
-
-3. **Configure API credentials**:
-
-   Edit `app_system/utils.py` to set:
-   - `API_KEY`: Your Federal Reserve API key
-   - `API_BASE`: API endpoint URL
-   - `model_selection`: Claude model version
-
-   **Important**: Never commit real API keys to version control!
-
-### Running the Application
-
-```bash
-cd app_system
-./run_app.sh
-```
-
-Or manually:
-```bash
-streamlit run app_demo2.py --server.fileWatcherType none --server.port 8501
-```
-
-The app will be available at `http://localhost:8501`
-
-## Documentation
-
-Full documentation is available in the `docs/` directory:
-
-- **[FRAMEWORK.md](docs/FRAMEWORK.md)** - System overview and design philosophy
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical architecture deep dive
-- **[CRITERIA_MATRIX.md](docs/CRITERIA_MATRIX.md)** - Complete evaluation criteria
-- **[QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** - Quick command reference
-- **[DEMO_README.md](docs/DEMO_README.md)** - Demo walkthrough
-
-For detailed setup instructions, see **[app_system/README.md](app_system/README.md)**
-
-## Key Features
-
-### Multi-Agent Debate
-- Endogenous persona selection (AI picks 3 most relevant reviewers)
-- Structured 4-round debate protocol
-- Weighted consensus voting
-- Full transparency with debate transcripts
-
-### Section Evaluator
-- Paper-type aware criteria (empirical/theoretical/policy)
-- Evidence-backed scoring with verbatim quotes
-- Hierarchical importance weighting
-- Actionable improvement recommendations
-
-## Use Cases
-
-1. **Pre-submission review**: Get feedback before journal submission
-2. **Editorial screening**: Triage borderline papers for review
-3. **PhD training**: Provide detailed feedback to students
-4. **Internal policy papers**: Assess Fed analysis before senior review
-5. **Replication studies**: Identify robustness gaps in published work
-
-## Development
-
-### Repository Organization
-
-- **app_system/**: Production-ready evaluation application
-- **docs/**: Comprehensive documentation
-- **changelog/**: Version history and changes
-- **comparative results/**: Benchmark evaluations
-- **rithika_experiments/**: Experimental features
-- ***.py** (root level): Legacy/experimental scripts
-
-### Key Files
-
-- `section_eval.py`, `section_eval_new.py` - Legacy section evaluator versions
-- `madexp*.py` - Experimental MAD variations
-- `routing.py` - Routing utilities
-
-## Support
-
-For issues, questions, or feature requests:
-- Check the [app_system README](app_system/README.md) for detailed troubleshooting
-- Review documentation in `docs/`
-- Contact: research-agents@federalreserve.gov
-
-## Version
-
-Current Version: 3.0
-Last Updated: March 2026
-Status: Production-ready, active use in Federal Reserve System
-
-## License
-
-Federal Reserve System Internal Use
+| Setting | Location | Default |
+|---|---|---|
+| API endpoint | `app_system/utils.py:API_BASE` | Federal Reserve MartinAI |
+| MAD model | `app_system/utils.py:model_selection3` | Claude 3.7 Sonnet |
+| Section eval model | `app_system/utils.py:model_selection` | Claude Sonnet 4.5 |
+| Fatal-flaw threshold | `section_eval/criteria/base.py` | score ≤ 1.5 → cap at 2.5 |
+| Cache prefix | `section_eval/evaluator.py:CACHE_PREFIX` | `"se_cache_v3"` |

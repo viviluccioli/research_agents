@@ -19,32 +19,51 @@ from pathlib import Path
 import logging
 import pdfplumber
 
-# API Configuration
-API_KEY = "sk-rjg7EvJ1zJN35I5I4Jo1dg" # API key
-API_BASE = "https://martinai-preview-api.frb.gov/v1"  # API endpoint
-url_chat_completions = f"{API_BASE}/chat/completions"
-model_selection2 = "anthropic.claude-3-5-sonnet-20240620-v1:0"
-model_selection3 = "anthropic.claude-3-7-sonnet-20250219-v1:0" # Model key
-model_selection = "anthropic.claude-sonnet-4-5-20250929-v1:0"
+# API Configuration - Import from config.py (loads from .env file)
+from config import (
+    API_KEY,
+    API_BASE,
+    url_chat_completions,
+    model_selection,
+    model_selection2,
+    model_selection3,
+    MODEL_PRIMARY,
+    MODEL_SECONDARY,
+    MODEL_TERTIARY
+)
 
-def single_query(prompt: str, debug_flag=False, retries=3) -> str:
+def single_query(prompt: str, debug_flag=False, retries=3, max_tokens=4096, model=None, temperature=None) -> str:
+    """
+    Query the LLM with a single prompt.
+
+    Args:
+        prompt: The user prompt
+        debug_flag: Print debug info
+        retries: Number of retry attempts
+        max_tokens: Maximum tokens in response (default 4096, can be increased for longer outputs)
+        model: Optional model override (defaults to model_selection if not provided)
+        temperature: Optional temperature override (defaults to 0.7 if not provided)
+    """
     url = url_chat_completions
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
+
+    # Use provided model or default to model_selection
+    selected_model = model if model is not None else model_selection
+    # Use provided temperature or default to 0.7
+    selected_temperature = temperature if temperature is not None else 0.7
+
     data = {
-        "model": model_selection3,
+        "model": selected_model,
         "messages": [{"role": "system", "content": """You are an advanced research assistant specializing in economics. Your expertise spans economics, computer science, data science, mathematics, statistics and all social sciences. You excel at synthesizing information across literature corpora, spotting gaps, trends, and insights, making inferences, and proposing creative solutions to research challenges. Your responses are informative, accessible, and tailored to the researcher's level of expertise.When an economist asks what you can do for them, clearly explain your four specialized workflows:
         1. Literature Relevance Analysis: Evaluate and funnel down papers based on relevance to a specific research focus. You'll flag which papers are most pertinent to their interests. (Note: requires input papers)
         2. Methodology-Driven Ideation: Generate novel research questions tailored to a specific methodological approach or empirical/theoretical framework the economist wants to employ.3. Policy Paper Inspiration: Derive research questions from Federal Reserve publications including FEDS notes, IFPD discussion papers, FOMC notes, and other Fed policy documents. (Note: requires input sources, whether policy exerpts or uploaded text)
         4. Cross-Paper Synthesis: Identify potential research directions by analyzing patterns, gaps, and emerging themes across multiple research papers, synthesizing insights to suggest promising new avenues of inquiry. (Note: requires input papers) After explaining these workflows, always ask: "Which of these approaches would be most helpful for your current research needs? Or would you like me to explain any of these workflows in more detail?" If you already have an idea of what route the economist wants you to pursue, confirm your intention and ask for necessary follow up information (e.g. files).Actively engage with the researcher, asking clarifying questions when needed to provide the most relevant and valuable assistance throughout the ideation process."""},
         {"role": "user", "content": prompt}],
-    "thinking": {
-        "type": "enabled",
-        "budget_tokens": 2048   # allocate up to 2 048 tokens for internal reasoning
-    },
-    "temperature": 1  # MUST be 1 when thinking is enabled
+    "temperature": selected_temperature,
+    "max_tokens": max_tokens  # Configurable output limit
     }
 
     for attempt in range(retries):
@@ -180,11 +199,8 @@ class ConversationManager:
             "messages": [self.system_prompt] + [
                 {"role": m["role"], "content": m.get("text", m.get("content", ""))} for m in self.ch
             ],
-            "thinking": {
-                "type": "enabled",
-                "budget_tokens": 2048
-            },
-            "temperature": 1
+            "temperature": 0.7,  # Reduced for more consistent outputs
+            "max_tokens": max_tokens
         }
 
         for attempt in range(retries):

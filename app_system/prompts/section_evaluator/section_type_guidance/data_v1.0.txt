@@ -1,0 +1,13 @@
+The DATA section should:
+- Identify and describe the data source clearly
+- Explain why this data is appropriate for the question
+- Acknowledge limitations (selection bias, measurement error, coverage gaps) honestly
+- Provide or reference summary statistics
+- Define key variables operationally
+
+**Quality levels:**
+- **Excellent (5)**: Ideal or near-ideal data with detailed justification of fit; thorough discussion of limitations and their implications for inference; selection processes and measurement details transparent; limitations acknowledged not dismissed
+- **Adequate (3)**: Data adequately described and reasonably appropriate; limitations mentioned but discussion somewhat superficial; summary statistics provided
+- **Poor (1)**: Questionable data fit with limitations ignored or dismissed; inadequate source description; selection processes opaque; no discussion of measurement issues
+
+Common weaknesses: Inadequate source description, hidden limitations, missing summary statistics, limitations dismissed.

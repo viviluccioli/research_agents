@@ -1,13 +1,54 @@
 # app.py - Evaluation Agent with tabbed workflows
 import streamlit as st
-from referee import RefereeReportChecker
+from referee import RefereeWorkflow
 from section_eval import SectionEvaluatorApp
 from utils import cm
 
 WORKFLOWS = {
-    "Referee Report": RefereeReportChecker,
+    "Referee Report": RefereeWorkflow,
     "Section Evaluator": SectionEvaluatorApp,
 }
+
+# Custom CSS for visual enhancements
+CUSTOM_CSS = """
+<style>
+    .paper-type-card {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 10px 5px;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    .paper-type-card:hover {
+        transform: translateY(-2px);
+    }
+    .step-box {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        margin: 10px 0;
+    }
+    .step-number {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-weight: bold;
+        font-size: 16px;
+        min-width: 40px;
+        text-align: center;
+        display: inline-block;
+    }
+    .architecture-section {
+        background-color: #f8f9fa;
+        padding: 25px;
+        border-radius: 12px;
+        margin: 20px 0;
+    }
+</style>
+"""
 
 def _ensure_session_keys():
     """Create session keys that the workflows expect."""
@@ -26,14 +67,209 @@ def _safe_render(workflow_instance, files):
     except Exception as e:
         st.error(f"Error rendering workflow UI: {e}")
 
+def _safe_render_with_paper_type(workflow_instance, files):
+    """
+    Render the Section Evaluator workflow UI with paper type
+    """
+    try:
+        workflow_instance.render_ui(files=files, paper_type=st.session_state.get("paper_type"))
+    except Exception as e:
+        st.error(f"Error rendering workflow UI: {e}")
+
+def _render_section_evaluator_architecture():
+    """Display the Section Evaluator architecture with visual design"""
+    with st.expander("📐 **How It Works**", expanded=False):
+        st.markdown('<div class="architecture-section">', unsafe_allow_html=True)
+        st.markdown("#### Paper-Type-Aware Evaluation Framework")
+
+        # Step 1
+        st.markdown("""
+        <div class="step-box">
+            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                <span class="step-number">1</span>
+                <div style="margin-left: 15px; color: #333;">
+                    <strong style="font-size: 16px;">Text Extraction & Section Detection</strong><br/>
+                    <span style="font-size: 13px;">PDF/LaTeX parsing → Hierarchical section detection</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Step 2
+        st.markdown("""
+        <div class="step-box">
+            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                <span class="step-number">2</span>
+                <div style="margin-left: 15px; color: #333;">
+                    <strong style="font-size: 16px;">Paper-Type-Specific Criteria Mapping</strong><br/>
+                    <span style="font-size: 13px;">Different sections and criteria based on paper type</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Paper type comparison
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("""
+            <div style="background: white; padding: 15px; border-radius: 8px; border: 3px solid #003d82;">
+                <h4 style="color: #003d82; margin-top: 0;">📊 Empirical</h4>
+                <p style="font-size: 13px; margin: 8px 0; color: black;"><strong>Key Sections:</strong></p>
+                <ul style="font-size: 12px; margin: 0; padding-left: 20px; color: black;">
+                    <li>Data</li>
+                    <li>Methodology ⭐ (1.3×)</li>
+                    <li>Results</li>
+                    <li>Robustness Checks</li>
+                </ul>
+                <p style="font-size: 11px; margin-top: 10px; color: #666;">Emphasizes identification strategy</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            st.markdown("""
+            <div style="background: white; padding: 15px; border-radius: 8px; border: 3px solid #1b5e20;">
+                <h4 style="color: #1b5e20; margin-top: 0;">📐 Theoretical</h4>
+                <p style="font-size: 13px; margin: 8px 0; color: black;"><strong>Key Sections:</strong></p>
+                <ul style="font-size: 12px; margin: 0; padding-left: 20px; color: black;">
+                    <li>Model Setup</li>
+                    <li>Proofs ⭐ (1.4×)</li>
+                    <li>Extensions</li>
+                    <li>Derivations</li>
+                </ul>
+                <p style="font-size: 11px; margin-top: 10px; color: #666;">Emphasizes mathematical rigor</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col3:
+            st.markdown("""
+            <div style="background: white; padding: 15px; border-radius: 8px; border: 3px solid #c62828;">
+                <h4 style="color: #c62828; margin-top: 0;">🏛️ Policy</h4>
+                <p style="font-size: 13px; margin: 8px 0; color: black;"><strong>Key Sections:</strong></p>
+                <ul style="font-size: 12px; margin: 0; padding-left: 20px; color: black;">
+                    <li>Policy Context</li>
+                    <li>Recommendations ⭐ (1.3×)</li>
+                    <li>Background</li>
+                    <li>Analysis</li>
+                </ul>
+                <p style="font-size: 11px; margin-top: 10px; color: #666;">Emphasizes practical applicability</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<p style='text-align: center; font-size: 12px; color: #666; margin-top: 10px;'>⭐ = Highest importance multiplier</p>", unsafe_allow_html=True)
+
+        # Step 3
+        st.markdown("""
+        <div class="step-box">
+            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                <span class="step-number">3</span>
+                <div style="margin-left: 15px; color: #333;">
+                    <strong style="font-size: 16px;">Weighted Section Evaluation</strong><br/>
+                    <span style="font-size: 13px;">Per-criterion scoring (1-5) × Criterion weights → Adjusted Score</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Step 4
+        st.markdown("""
+        <div class="step-box">
+            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                <span class="step-number">4</span>
+                <div style="margin-left: 15px; color: #333;">
+                    <strong style="font-size: 16px;">Overall Scoring & Feedback</strong><br/>
+                    <span style="font-size: 13px;">Publication readiness + Actionable improvements per section</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+def _render_referee_report_architecture():
+    """Display the Referee Report architecture with visual design"""
+    with st.expander("📐 **How It Works**", expanded=False):
+        st.markdown('<div class="architecture-section">', unsafe_allow_html=True)
+        st.markdown("#### Multi-Agent Debate Architecture")
+
+        # Step 1
+        st.markdown("""
+        <div class="step-box">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <span class="step-number">1</span>
+                <div style="margin-left: 20px; color: #333;">
+                    <strong style="font-size: 18px;">Independent Evaluation</strong><br/>
+                    <span style="font-size: 14px;">Each agent evaluates independently and provides domain-specific verdict with evidence</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Step 2
+        st.markdown("""
+        <div class="step-box">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <span class="step-number">2</span>
+                <div style="margin-left: 20px; color: #333;">
+                    <strong style="font-size: 18px;">Cross-Examination</strong><br/>
+                    <span style="font-size: 14px;">Agents read each other's reports, challenge assumptions, and engage in debate</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Sub-steps
+        st.markdown("""
+        <div style="background: #f8f9fa; padding: 15px; padding-left: 40px; border-radius: 8px; border-left: 4px solid #9fa8da; margin: 10px 0 10px 40px;">
+            <div style="margin-bottom: 12px;">
+                <span style="background: #9fa8da; color: white; padding: 6px 12px; border-radius: 4px; font-weight: bold; font-size: 14px;">2a</span>
+                <strong style="margin-left: 10px; font-size: 15px;">Debate Round</strong><br/>
+                <span style="margin-left: 10px; font-size: 13px; color: #555;">Agents challenge each other's reasoning and synthesize insights</span>
+            </div>
+            <div style="margin-bottom: 12px;">
+                <span style="background: #9fa8da; color: white; padding: 6px 12px; border-radius: 4px; font-weight: bold; font-size: 14px;">2b</span>
+                <strong style="margin-left: 10px; font-size: 15px;">Answer Questions</strong><br/>
+                <span style="margin-left: 10px; font-size: 13px; color: #555;">Agents respond to peer questions with evidence</span>
+            </div>
+            <div>
+                <span style="background: #9fa8da; color: white; padding: 6px 12px; border-radius: 4px; font-weight: bold; font-size: 14px;">2c</span>
+                <strong style="margin-left: 10px; font-size: 15px;">Final Amendments</strong><br/>
+                <span style="margin-left: 10px; font-size: 13px; color: #555;">Agents integrate peer feedback and submit final verdicts</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Step 3
+        st.markdown("""
+        <div class="step-box">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <span class="step-number">3</span>
+                <div style="margin-left: 20px; color: #333;">
+                    <strong style="font-size: 18px;">Editor Decision</strong><br/>
+                    <span style="font-size: 14px;">Weighted consensus: PASS=1.0, REVISE=0.5, FAIL=0.0 → Final recommendation</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
 def main():
     st.set_page_config(layout="wide", page_title="Evaluation Agent")
+
+    # Apply custom CSS
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
     st.title("Evaluation Agent")
-    
+
     # Use cleaner heading style
     st.markdown("This agent helps you evaluate and improve your academic work. Choose one of two workflows below to get started.")
-    
+
     _ensure_session_keys()
+
+    # Initialize paper type in session state (used by Section Evaluator tab)
+    if "paper_type" not in st.session_state:
+        st.session_state.paper_type = None
 
     # ----------------- Shared File Uploader -----------------
     with st.expander("Document Uploader", expanded=True):
@@ -111,6 +347,14 @@ def main():
                         pass
                 st.session_state.active_tab = label
 
+            # Show architecture display specific to each workflow
+            if label == "Section Evaluator":
+                _render_section_evaluator_architecture()
+            elif label == "Referee Report":
+                _render_referee_report_architecture()
+
+            st.markdown("---")
+
             # Workflow session key (persist instance)
             key = f"{label.lower().replace(' ', '_')}_workflow"
             if key not in st.session_state:
@@ -122,10 +366,12 @@ def main():
                     continue
 
             instance = st.session_state[key]
-            
 
-            # Safe render with shared files
-            _safe_render(instance, files=st.session_state.get("file_data", {}))
+            # Safe render with shared files (pass paper_type for Section Evaluator)
+            if label == "Section Evaluator":
+                _safe_render_with_paper_type(instance, files=st.session_state.get("file_data", {}))
+            else:
+                _safe_render(instance, files=st.session_state.get("file_data", {}))
 
     # Footer
     st.markdown("---")

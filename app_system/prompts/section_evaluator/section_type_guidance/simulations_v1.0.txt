@@ -1,0 +1,12 @@
+The SIMULATIONS section should:
+- Present economically meaningful scenarios
+- Clearly distinguish baseline from counterfactual
+- Compute welfare implications rigorously
+- Include policy-relevant experiments
+
+**Quality levels:**
+- **Excellent (5)**: Policy-relevant scenarios with clear economic motivation; welfare effects decomposed and interpreted (e.g., distributional analysis); baseline vs counterfactual clearly distinguished with quantitative comparisons
+- **Adequate (3)**: Meaningful scenarios simulated; basic welfare calculation provided; baseline and counterfactual distinguished
+- **Poor (1)**: Irrelevant scenarios; welfare mentioned without quantification; unclear counterfactual; no economic interpretation
+
+Common weaknesses: Irrelevant scenarios, unclear counterfactual, missing welfare analysis.

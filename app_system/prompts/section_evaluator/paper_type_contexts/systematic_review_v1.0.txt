@@ -1,0 +1,8 @@
+This is a SYSTEMATIC REVIEW paper. Key characteristics:
+- Synthesizes existing literature on a topic
+- Must have transparent and reproducible search methodology
+- Inclusion and exclusion criteria must be explicit
+- Should identify gaps for future research
+- Quality of included studies should affect conclusions
+
+Evaluation emphasis: Search comprehensiveness, methodological transparency, synthesis quality, gap identification.

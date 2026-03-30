@@ -1,0 +1,8 @@
+The CONCLUSION should:
+- Restate the main contribution clearly
+- Summarize key findings
+- Acknowledge limitations honestly
+- Suggest future research directions
+- Note broader policy or theoretical implications
+
+Common weaknesses: Inconsistency with introduction, overclaiming, no future directions.

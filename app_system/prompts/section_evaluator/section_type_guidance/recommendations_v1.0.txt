@@ -1,0 +1,7 @@
+The RECOMMENDATIONS section should:
+- Link recommendations directly to the analysis
+- Consider implementation feasibility
+- Acknowledge costs and distributional effects
+- Be specific and actionable
+
+Common weaknesses: Recommendations disconnected from evidence, ignoring distributional effects.

@@ -1,0 +1,8 @@
+This is a THEORETICAL economics paper. Key characteristics:
+- Develops mathematical model(s) from explicit assumptions
+- Derives propositions or theorems with formal proofs
+- Proofs may appear in appendix, but intuition must be in main text
+- Model extensions explore robustness of core results
+- Economic interpretation must accompany mathematical results
+
+Evaluation emphasis: Assumption clarity, mathematical correctness, logical consistency, economic intuition.

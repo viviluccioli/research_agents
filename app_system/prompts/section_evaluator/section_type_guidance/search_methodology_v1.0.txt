@@ -1,0 +1,7 @@
+The SEARCH METHODOLOGY section should:
+- Report searches across multiple relevant databases
+- Provide exact search strings
+- Specify and justify the time period
+- Be reproducible by another researcher
+
+Common weaknesses: Single database, vague search terms, missing date range.

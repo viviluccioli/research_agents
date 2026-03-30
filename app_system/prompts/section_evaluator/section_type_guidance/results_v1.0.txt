@@ -1,0 +1,13 @@
+The RESULTS section should:
+- Present findings that directly answer the research question
+- Interpret both statistical and economic significance
+- Acknowledge unexpected or null results
+- Integrate tables and figures with the narrative text
+- Calibrate effect sizes to real-world context
+
+**Quality levels:**
+- **Excellent (5)**: Economic magnitudes quantified and calibrated to real-world benchmarks; mechanisms explained with potential decomposition; unexpected results addressed transparently with discussion; effect sizes compared to prior literature
+- **Adequate (3)**: Basic discussion of economic magnitude beyond significance stars; main findings clearly presented; tables adequately described
+- **Poor (1)**: Only reports significance stars without interpretation; ignores null or contradictory results; no discussion of economic magnitude; selective reporting
+
+Common weaknesses: Over-reliance on significance stars, ignoring economic magnitude, selective reporting.

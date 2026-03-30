@@ -1,0 +1,8 @@
+This is a POLICY-FOCUSED economics paper. Key characteristics:
+- Addresses a real-world policy question or debate
+- Recommendations must be grounded in evidence
+- Should acknowledge trade-offs and distributional effects
+- Implementation feasibility matters
+- Should engage with current policy discourse
+
+Evaluation emphasis: Evidence-recommendation linkage, feasibility, trade-off acknowledgment, practical applicability.

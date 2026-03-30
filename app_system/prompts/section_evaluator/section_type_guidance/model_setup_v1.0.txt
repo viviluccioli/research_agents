@@ -1,0 +1,12 @@
+The MODEL SETUP section should:
+- State all assumptions explicitly and clearly
+- Use consistent and defined mathematical notation
+- Justify modeling choices economically (not just mathematically)
+- Relate to existing models in literature
+
+**Quality levels:**
+- **Excellent (5)**: Assumptions deeply motivated by economic phenomena; parameter restrictions economically justified; creative modeling choices that advance theory; clear differentiation from prior models with specific citations
+- **Adequate (3)**: Assumptions stated clearly; standard modeling approach competently applied; basic economic motivation
+- **Poor (1)**: Hidden assumptions; ad hoc choices without justification; notation inconsistent; no connection to literature
+
+Common weaknesses: Hidden assumptions, inconsistent notation, insufficient motivation for modeling choices.

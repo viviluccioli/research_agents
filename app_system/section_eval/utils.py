@@ -73,7 +73,7 @@ def safe_query(llm, prompt: str, max_chars: Optional[int] = None) -> str:
     section text is already capped inside build_evaluation_prompt.
     """
     import requests as _requests
-    from utils import url_chat_completions, API_KEY, model_selection  # parent eval/ utils.py
+    from utils import url_chat_completions, API_KEY, model_selection  # parent utils.py (loads from config)
 
     headers = {
         "Authorization": f"Bearer {API_KEY}",

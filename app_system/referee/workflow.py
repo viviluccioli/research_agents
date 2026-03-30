@@ -1,0 +1,831 @@
+# workflow.py - Main Multi-Agent Referee Report UI
+"""
+Main production UI for the multi-agent debate (MAD) referee report system.
+
+This is the official workflow used in app.py. It uses LLM-powered summarization
+to compress debate outputs for cleaner display while preserving full reports
+in expandable sections.
+"""
+import streamlit as st
+import json
+import tempfile
+import os
+import asyncio
+import datetime
+import re
+from typing import Dict, List, Any
+from io import BytesIO
+import pdfplumber
+import pandas as pd
+from utils import cm, single_query
+from referee.engine import execute_debate_pipeline, SELECTION_PROMPT, SYSTEM_PROMPTS, DEBATE_PROMPTS
+from referee._utils.summarizer import summarize_all_rounds
+
+# Import helper functions from archived full output UI
+from referee._archived.full_output_ui import (
+    CUSTOM_CSS,
+    format_severity_labels,
+    format_verdict,
+    format_final_verdict,
+    extract_verdict,
+    summarize_text,
+    format_round1_output,
+    format_round2a_output,
+    format_round2c_output,
+    generate_summary_table
+)
+
+
+class RefereeWorkflow:
+    """
+    Main production workflow for multi-agent debate paper evaluation.
+
+    This is the official UI used in app.py. It uses LLM-powered summarization
+    to compress debate outputs for cleaner display while preserving full reports
+    in expandable sections.
+    """
+
+    def __init__(self, llm=cm):
+        """Initialize with conversation manager from utils."""
+        self.llm = llm
+
+    def render_ui(self, files=None):
+        """Render the Streamlit UI for the multi-agent referee report."""
+        # Apply custom CSS
+        st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+        st.subheader("Multi-Agent Referee Evaluation")
+        st.info("📊 **NOTE**: This version uses additional LLM passes to compress outputs for cleaner display.")
+        st.write("This tool uses a multi-agent debate system to evaluate your manuscript from multiple perspectives.")
+
+        # Add description expander with personas
+        with st.expander("📖 **How This System Works**", expanded=False):
+            st.markdown("""
+### What This System Does
+
+The **Multi-Agent Debate (MAD) System** evaluates research papers through structured debate between specialized AI personas.
+
+### Workflow Overview
+
+The system operates in **5 sequential rounds**:
+
+1. **Round 0 - Persona Selection**: An LLM Chief Editor selects 3 of 5 available personas most relevant to the paper and assigns importance weights (summing to 1.0).
+
+2. **Round 1 - Independent Evaluation**: Each selected persona independently evaluates the paper from their domain expertise, identifying flaws with severity labels ([FATAL], [MAJOR], [MINOR]) and providing an initial verdict (PASS/REVISE/FAIL).
+
+3. **Round 2A - Cross-Examination**: Personas read each other's Round 1 evaluations and engage in cross-domain synthesis, constructive pushback, and clarification questions.
+
+4. **Round 2B - Direct Examination**: Each persona responds to questions directed at them from Round 2A, providing evidence and taking a position (CONCEDE or DEFEND).
+
+5. **Round 2C - Final Amendments**: After reviewing the full debate transcript, each persona submits a final amended verdict with justification.
+
+6. **Round 3 - Editor Consensus**: A weighted consensus score is computed mathematically (PASS=1.0, REVISE=0.5, FAIL=0.0), and the Editor writes the official referee report.
+
+### Decision Thresholds
+
+- **Consensus Score > 0.75**: ACCEPT
+- **Consensus Score 0.40–0.75**: REJECT AND RESUBMIT
+- **Consensus Score < 0.40**: REJECT
+
+---
+
+### 👥 Available Personas (3 will be selected)
+            """)
+
+            # Compact horizontal persona cards
+            st.markdown("""
+            <style>
+            .persona-card {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                border-radius: 12px;
+                padding: 15px;
+                margin: 5px;
+                text-align: center;
+                color: white;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .persona-card h4 {
+                margin: 0 0 8px 0;
+                font-size: 18px;
+            }
+            .persona-card p {
+                margin: 4px 0;
+                font-size: 12px;
+                opacity: 0.95;
+            }
+            .persona-theorist { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+            .persona-empiricist { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+            .persona-historian { background: linear-gradient(135deg, #7f7fd5 0%, #86a8e7 100%); }
+            .persona-visionary { background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%); }
+            .persona-policymaker { background: linear-gradient(135deg, #ee5a6f 0%, #f29263 100%); }
+            </style>
+            <div style="display: flex; justify-content: space-between; gap: 8px; margin: 15px 0;">
+                <div class="persona-card persona-theorist">
+                    <h4>🔢 Theorist</h4>
+                    <p><strong>Focus:</strong> Mathematical logic & proofs</p>
+                </div>
+                <div class="persona-card persona-empiricist">
+                    <h4>📊 Empiricist</h4>
+                    <p><strong>Focus:</strong> Data & identification</p>
+                </div>
+                <div class="persona-card persona-historian">
+                    <h4>📚 Historian</h4>
+                    <p><strong>Focus:</strong> Literature context</p>
+                </div>
+                <div class="persona-card persona-visionary">
+                    <h4>🚀 Visionary</h4>
+                    <p><strong>Focus:</strong> Innovation & novelty</p>
+                </div>
+                <div class="persona-card persona-policymaker">
+                    <h4>🏛️ Policymaker</h4>
+                    <p><strong>Focus:</strong> Policy relevance</p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.info("💡 The system automatically selects the 3 most relevant personas based on your paper's content and assigns importance weights.")
+
+        st.markdown("---")
+
+        # Check if files are available
+        if not files:
+            st.info("Please upload your manuscript using the document uploader above.")
+            return
+
+        # File selection
+        manuscript_file = st.selectbox(
+            "Select your manuscript for multi-agent evaluation",
+            options=list(files.keys()),
+            key="manuscript_selector"
+        )
+
+        if st.button("🚀 Run Multi-Agent Evaluation", type="primary"):
+            if not manuscript_file:
+                st.error("Please select a manuscript file.")
+                return
+
+            with st.spinner("Extracting text from manuscript..."):
+                # Extract text from manuscript
+                paper_text = self.extract_text_from_pdf(files[manuscript_file])
+
+            # Run the multi-agent debate
+            try:
+                # Create progress tracking
+                progress_placeholder = st.empty()
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+
+                def update_progress(stage, progress):
+                    status_text.text(f"🔄 {stage}")
+                    progress_bar.progress(progress)
+
+                # Execute debate pipeline
+                with st.spinner("Running multi-agent debate..."):
+                    debate_results = asyncio.run(
+                        execute_debate_pipeline(paper_text, progress_callback=update_progress)
+                    )
+
+                # Run summarization pass
+                with st.spinner("Compressing outputs for display (additional LLM pass)..."):
+                    summaries = asyncio.run(summarize_all_rounds(debate_results))
+
+                # Store results in session state
+                st.session_state.debate_results = debate_results
+                st.session_state.debate_summaries = summaries
+
+                # Clear progress indicators
+                progress_bar.empty()
+                status_text.empty()
+
+                # Display results
+                self.display_debate_results(debate_results, summaries)
+
+            except Exception as e:
+                st.error(f"Error during multi-agent evaluation: {e}")
+                st.exception(e)
+
+
+    def extract_text_from_pdf(self, file_content):
+        """Extract text from a PDF file."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_file:
+            temp_file.write(file_content)
+            temp_file.flush()
+
+            text = ""
+            try:
+                with pdfplumber.open(temp_file.name) as pdf:
+                    for page in pdf.pages:
+                        text += page.extract_text() or ""
+            except Exception as e:
+                st.error(f"Error extracting text from PDF: {e}")
+
+            # Clean up
+            os.unlink(temp_file.name)
+            return text
+
+    def create_excel_export(self, results: Dict) -> BytesIO:
+        """
+        Create an Excel file with experiment tracking data.
+
+        Returns:
+            BytesIO object containing the Excel file
+        """
+        # Extract key data
+        metadata = results.get('metadata', {})
+        round_0 = results.get('round_0', {})
+        active_personas = round_0.get('selected_personas', [])
+        weights = round_0.get('weights', {})
+        consensus = results.get('consensus', {})
+
+        # Extract verdicts from each round
+        round_1_verdicts = {}
+        for persona in active_personas:
+            verdict = extract_verdict(results.get('round_1', {}).get(persona, ''))
+            round_1_verdicts[persona] = verdict
+
+        round_2c_verdicts = {}
+        for persona in active_personas:
+            verdict = extract_verdict(results.get('round_2c', {}).get(persona, ''))
+            round_2c_verdicts[persona] = verdict
+
+        # Create configuration sheet
+        config_data = {
+            'Configuration Item': [],
+            'Value': []
+        }
+
+        # Basic info
+        config_data['Configuration Item'].extend([
+            'Run Date', 'Run Time', 'Runtime Duration',
+            'Model Version', 'Temperature',
+            'Thinking Enabled', 'Thinking Budget (tokens)',
+            'Max Retries', 'Retry Delay (seconds)'
+        ])
+        config_data['Value'].extend([
+            metadata.get('start_time', 'N/A').split(' ')[0],
+            metadata.get('start_time', 'N/A').split(' ')[1] if ' ' in metadata.get('start_time', 'N/A') else 'N/A',
+            metadata.get('total_runtime_formatted', 'N/A'),
+            metadata.get('model_version', 'N/A'),
+            str(metadata.get('temperature', 'N/A')),
+            str(metadata.get('thinking_enabled', 'N/A')),
+            str(metadata.get('thinking_budget_tokens', 'N/A')),
+            str(metadata.get('max_retries', 'N/A')),
+            str(metadata.get('retry_delay_seconds', 'N/A'))
+        ])
+
+        # Add prompt versions
+        prompt_versions = metadata.get('prompt_versions', {})
+        for key, version in sorted(prompt_versions.items()):
+            config_data['Configuration Item'].append(f'Prompt: {key}')
+            config_data['Value'].append(version)
+
+        config_df = pd.DataFrame(config_data)
+
+        # Create results sheet
+        results_data = {
+            'Persona': [],
+            'Weight': [],
+            'Round 1 Verdict': [],
+            'Round 2C Verdict (Final)': [],
+            'Verdict Changed': []
+        }
+
+        for persona in active_personas:
+            results_data['Persona'].append(persona)
+            results_data['Weight'].append(weights.get(persona, 0))
+            results_data['Round 1 Verdict'].append(round_1_verdicts.get(persona, 'UNKNOWN'))
+            results_data['Round 2C Verdict (Final)'].append(round_2c_verdicts.get(persona, 'UNKNOWN'))
+            changed = "Yes" if round_1_verdicts.get(persona) != round_2c_verdicts.get(persona) else "No"
+            results_data['Verdict Changed'].append(changed)
+
+        results_df = pd.DataFrame(results_data)
+
+        # Create consensus sheet
+        consensus_data = {
+            'Metric': [
+                'Weighted Consensus Score',
+                'Final Decision',
+                'Justification'
+            ],
+            'Value': [
+                f"{consensus.get('weighted_score', 0):.3f}",
+                consensus.get('decision', 'UNKNOWN'),
+                round_0.get('justification', 'N/A')
+            ]
+        }
+        consensus_df = pd.DataFrame(consensus_data)
+
+        # Write to Excel
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            config_df.to_excel(writer, sheet_name='Configuration', index=False)
+            results_df.to_excel(writer, sheet_name='Results', index=False)
+            consensus_df.to_excel(writer, sheet_name='Consensus', index=False)
+
+            # Auto-adjust column widths
+            for sheet_name in writer.sheets:
+                worksheet = writer.sheets[sheet_name]
+                for column in worksheet.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    worksheet.column_dimensions[column_letter].width = adjusted_width
+
+        output.seek(0)
+        return output
+
+    def display_debate_results(self, results: Dict, summaries: Dict):
+        """Display the multi-agent debate results with summarized outputs."""
+        st.success("✅ Multi-Agent Evaluation Complete!")
+
+        # Icon mapping for all personas
+        icon_map = {
+            "Theorist": "🔢",
+            "Empiricist": "📊",
+            "Mathematician": "🔢",
+            "Historian": "📚",
+            "Visionary": "🚀",
+            "Policymaker": "🏛️"
+        }
+
+        # Get active personas from round 0
+        active_personas = results.get('round_0', {}).get('selected_personas', ["Mathematician", "Historian", "Visionary"])
+        weights = results.get('round_0', {}).get('weights', {})
+
+        # ROUND 0: Persona Selection
+        if 'round_0' in results:
+            st.markdown('<div class="round-header">🎯 ROUND 0: PERSONA SELECTION</div>', unsafe_allow_html=True)
+            with st.expander("📋 **Selected Review Panel**", expanded=True):
+                st.markdown(f"**Selected Personas:** {', '.join(active_personas)}")
+                st.markdown("**Weights:**")
+                for persona, weight in weights.items():
+                    st.markdown(f"- **{persona}**: {weight}")
+                if 'justification' in results['round_0']:
+                    st.markdown(f"**Justification:** {results['round_0']['justification']}")
+
+            # System Prompt Display
+            with st.expander("🔍 **View System Prompt for Round 0**", expanded=False):
+                st.code(SELECTION_PROMPT, language="text")
+
+            st.markdown("---")
+
+        # ROUND 1: Independent Evaluation (SUMMARIZED)
+        st.markdown('<div class="round-header">⚡ ROUND 1: INDEPENDENT EVALUATION</div>', unsafe_allow_html=True)
+        st.markdown("*Each persona independently evaluates the paper with severity-weighted findings.*")
+        st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+
+        # System Prompt Display for Round 1
+        with st.expander("🔍 **View System Prompts for Round 1**", expanded=False):
+            for persona in active_personas:
+                st.markdown(f"**{persona} System Prompt:**")
+                st.code(SYSTEM_PROMPTS.get(persona, "N/A"), language="text")
+                st.markdown("---")
+
+        for role in active_personas:
+            icon = icon_map.get(role, "🔍")
+            box_class = f"{role.lower()}-box"
+
+            # Display SUMMARIZED version by default
+            summary_data = summaries['round_1_summaries'].get(role, {})
+            summary_text = summary_data.get('summary', 'No summary available')
+            verdict = summary_data.get('verdict', 'UNKNOWN')
+
+            with st.container():
+                st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
+                st.markdown(f"### {icon} {role.upper()}")
+                st.markdown(f"**Verdict:** {format_verdict(verdict)}", unsafe_allow_html=True)
+                st.markdown(summary_text, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # Full report in expander
+                with st.expander(f"📄 View Full {role} Report", expanded=False):
+                    raw_text = results['round_1'][role]
+                    formatted_text = format_severity_labels(raw_text)
+                    st.markdown(formatted_text, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ROUND 2A: Cross-Examination (SUMMARIZED)
+        st.markdown('<div class="round-header">🔄 ROUND 2A: CROSS-EXAMINATION</div>', unsafe_allow_html=True)
+        st.markdown("*Personas challenge each other's findings and ask clarifying questions.*")
+        st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+
+        # System Prompt Display for Round 2A
+        with st.expander("🔍 **View System Prompt for Round 2A**", expanded=False):
+            st.code(DEBATE_PROMPTS["Round_2A_Cross_Examination"], language="text")
+
+        for role in active_personas:
+            icon = icon_map.get(role, "🔍")
+            box_class = f"{role.lower()}-box"
+
+            # Display SUMMARIZED version
+            summary_text = summaries['round_2a_summaries'].get(role, 'No summary available')
+
+            with st.container():
+                st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
+                st.markdown(f"### {icon} {role.upper()} - Cross-Examination")
+                st.markdown(summary_text, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # Full report in expander
+                with st.expander(f"📄 View Full {role} Cross-Examination", expanded=False):
+                    raw_text = results['round_2a'][role]
+                    formatted_text = format_severity_labels(raw_text)
+
+                    # Parse and display structured sections
+                    insights_pattern = r'\*\*Cross-Domain Insights[:\*]*\s*(.*?)(?=\*\*Constructive Pushback|\*\*Clarification Requests|\Z)'
+                    insights_match = re.search(insights_pattern, formatted_text, re.DOTALL | re.IGNORECASE)
+
+                    if insights_match:
+                        st.markdown("**Cross-Domain Insights:**")
+                        insights_text = insights_match.group(1).strip()
+                        st.markdown(insights_text, unsafe_allow_html=True)
+                        st.markdown("")
+
+                    pushback_pattern = r'\*\*Constructive Pushback[:\*]*\s*(.*?)(?=\*\*Clarification Requests|\Z)'
+                    pushback_match = re.search(pushback_pattern, formatted_text, re.DOTALL | re.IGNORECASE)
+
+                    if pushback_match:
+                        st.markdown("**Constructive Pushback:**")
+                        pushback_text = pushback_match.group(1).strip()
+                        st.markdown(pushback_text, unsafe_allow_html=True)
+                        st.markdown("")
+
+                    clarification_pattern = r'\*\*Clarification Requests[:\*]*\s*(.*?)(?=\Z)'
+                    clarification_match = re.search(clarification_pattern, formatted_text, re.DOTALL | re.IGNORECASE)
+
+                    if clarification_match:
+                        st.markdown("**Clarification Requests:**")
+                        clarification_text = clarification_match.group(1).strip()
+                        st.markdown(clarification_text, unsafe_allow_html=True)
+
+                    if not (insights_match or pushback_match or clarification_match):
+                        st.markdown(formatted_text, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ROUND 2B: Direct Examination (SUMMARIZED)
+        st.markdown('<div class="round-header">💬 ROUND 2B: ANSWERING QUESTIONS</div>', unsafe_allow_html=True)
+        st.markdown("*Personas respond to peer questions with evidence and concessions/defenses.*")
+        st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+
+        # System Prompt Display for Round 2B
+        with st.expander("🔍 **View System Prompt for Round 2B**", expanded=False):
+            st.code(DEBATE_PROMPTS["Round_2B_Direct_Examination"], language="text")
+
+        for role in active_personas:
+            icon = icon_map.get(role, "🔍")
+            box_class = f"{role.lower()}-box"
+
+            # Display SUMMARIZED version
+            summary_text = summaries['round_2b_summaries'].get(role, 'No summary available')
+
+            with st.container():
+                st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
+                st.markdown(f"### {icon} {role.upper()} - Responses")
+                st.markdown(summary_text, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # Full report in expander
+                with st.expander(f"📄 View Full {role} Responses", expanded=False):
+                    raw_text = results['round_2b'][role]
+                    peers = [p for p in active_personas if p != role]
+
+                    for peer in peers:
+                        pattern = rf'\*\*Response to {peer}[:\*]*\s*(.*?)(?=\*\*Response to |\*\*Concession or Defense|\Z)'
+                        match = re.search(pattern, raw_text, re.DOTALL | re.IGNORECASE)
+
+                        if match:
+                            response_content = match.group(1).strip()
+                            st.markdown(f"**Response to {peer}:**")
+                            st.markdown(response_content)
+                            st.markdown("---")
+
+                    # General concession or defense section
+                    pattern = r'\*\*Concession or Defense[:\*]*\s*(.*?)(?=\Z)'
+                    match = re.search(pattern, raw_text, re.DOTALL | re.IGNORECASE)
+                    if match:
+                        content = match.group(1).strip()
+                        st.markdown(f"**Overall Position:**")
+                        st.markdown(content)
+
+        st.markdown("---")
+
+        # ROUND 2C: Final Amendments (SUMMARIZED)
+        st.markdown('<div class="round-header">⚖️ ROUND 2C: FINAL AMENDMENTS</div>', unsafe_allow_html=True)
+        st.markdown("*Personas submit final verdicts after integrating full debate.*")
+        st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+
+        # System Prompt Display for Round 2C
+        with st.expander("🔍 **View System Prompt for Round 2C**", expanded=False):
+            st.code(DEBATE_PROMPTS["Round_2C_Final_Amendment"], language="text")
+
+        cols = st.columns(3)
+        for idx, role in enumerate(active_personas):
+            icon = icon_map.get(role, "🔍")
+            box_class = f"{role.lower()}-box"
+
+            # Display SUMMARIZED version
+            summary_data = summaries['round_2c_summaries'].get(role, {})
+            summary_text = summary_data.get('summary', 'No summary available')
+            verdict = summary_data.get('verdict', 'UNKNOWN')
+
+            with cols[idx]:
+                st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
+                st.markdown(f"### {icon} {role.upper()}")
+                st.markdown(f"**Final Verdict:** {format_verdict(verdict)}", unsafe_allow_html=True)
+                st.markdown(summary_text, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # Full report in expander
+                with st.expander(f"📄 Full Report", expanded=False):
+                    raw_text = results['round_2c'][role]
+                    formatted_text = format_severity_labels(raw_text)
+                    st.markdown(formatted_text, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ROUND 3: Consensus Calculation & Editor Decision (SUMMARIZED)
+        st.markdown('<div class="round-header">📜 ROUND 3: WEIGHTED CONSENSUS & EDITOR DECISION</div>', unsafe_allow_html=True)
+
+        # System Prompt Display for Round 3
+        with st.expander("🔍 **View System Prompt for Round 3**", expanded=False):
+            st.code(DEBATE_PROMPTS["Round_3_Editor"], language="text")
+
+        # Display deterministic consensus calculation
+        if 'consensus' in results:
+            st.markdown("### 🔢 Deterministic Weighted Consensus")
+            consensus = results['consensus']
+
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                st.markdown("**Individual Verdicts & Weights:**")
+                for persona in active_personas:
+                    verdict = consensus['verdicts'].get(persona, 'UNKNOWN')
+                    weight = weights.get(persona, 0)
+                    verdict_value = 1.0 if verdict == 'PASS' else 0.5 if verdict == 'REVISE' else 0.0
+                    contribution = weight * verdict_value
+                    st.markdown(f"- **{persona}** (weight={weight}): {verdict} = {verdict_value} → contribution = {contribution:.3f}")
+
+            with col2:
+                st.markdown("**Consensus Score:**")
+                st.metric("Weighted Score", f"{consensus['weighted_score']:.3f}", help="Out of 1.0")
+                st.markdown("**Decision Threshold:**")
+                st.code("""Score > 0.75: ACCEPT
+0.40 ≤ Score ≤ 0.75: REJECT & RESUBMIT
+Score < 0.40: REJECT""", language="text")
+
+            st.markdown(f"""
+            <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; border: 2px solid #388e3c; margin: 15px 0;">
+                <strong style="font-size: 18px;">📊 Computed Decision: {consensus['decision']}</strong>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown("---")
+
+        # Editor Report (SUMMARIZED)
+        st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+
+        final_decision = results.get('consensus', {}).get('decision', 'UNKNOWN')
+        editor_summary = summaries.get('editor_summary', 'No summary available')
+
+        st.markdown(f"""
+        <div class="persona-box editor-box">
+        <h3>🏛️ Senior Editor's Report</h3>
+        <div style="text-align: center; margin: 20px 0;">
+        {format_final_verdict(final_decision)}
+        </div>
+        <p style="text-align: center; color: #666; font-size: 14px;">
+        (Decision computed deterministically from weighted consensus)
+        </p>
+        """, unsafe_allow_html=True)
+
+        st.markdown(editor_summary, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Full editor report in expander
+        with st.expander("📄 View Full Editor Report", expanded=False):
+            final_text = results['final_decision']
+            sections = re.split(r'\*\*([^*]+)\*\*', final_text)
+            for i in range(0, len(sections), 2):
+                if i + 1 < len(sections):
+                    header = sections[i + 1].strip().rstrip(':')
+                    content = sections[i + 2].strip() if i + 2 < len(sections) else ""
+                    st.markdown(f"**{header}:**")
+                    st.markdown(content, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # Summary Table
+        st.subheader("📊 Evaluation Summary")
+
+        # Create table data
+        table_data = []
+        r1_verdicts = {p: extract_verdict(results['round_1'].get(p, '')) for p in active_personas}
+        r2c_verdicts = {p: extract_verdict(results['round_2c'].get(p, '')) for p in active_personas}
+
+        for persona in active_personas:
+            weight = weights.get(persona, 0)
+            r1_v = r1_verdicts[persona]
+            r2c_v = r2c_verdicts[persona]
+            changed = "Yes ✅" if r1_v != r2c_v else "No ➖"
+            table_data.append({
+                "Persona": persona,
+                "Weight": weight,
+                "Round 1 Verdict": r1_v,
+                "Final Verdict (R2C)": r2c_v,
+                "Changed?": changed
+            })
+
+        # Display as dataframe
+        import pandas as pd
+        df = pd.DataFrame(table_data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        weighted_score = results.get('consensus', {}).get('weighted_score', 0)
+
+        st.markdown(f"""
+        **FINAL EDITORIAL DECISION (Weighted Score: {weighted_score:.3f}):** {format_final_verdict(final_decision)}
+        """, unsafe_allow_html=True)
+
+        # Metadata Section
+        if 'metadata' in results:
+            st.markdown("---")
+            st.subheader("⚙️ Execution Metadata")
+            metadata = results['metadata']
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("**Model Configuration:**")
+                thinking_status = "Enabled" if metadata.get('thinking_enabled') else "Disabled"
+                thinking_budget = f"{metadata.get('thinking_budget_tokens', 'N/A')} tokens" if metadata.get('thinking_enabled') else "N/A"
+
+                if 'max_tokens_round_2c' in metadata:
+                    max_tokens_display = f"""Max Output Tokens:
+  - Rounds 0,1,2A,2B: {metadata.get('max_tokens_round_0_1_2a_2b', 'N/A')}
+  - Round 2C: {metadata.get('max_tokens_round_2c', 'N/A')}
+  - Round 3 (Editor): {metadata.get('max_tokens_round_3_editor', 'N/A')}"""
+                else:
+                    max_tokens_display = f"Max Output Tokens: {metadata.get('max_tokens', 'N/A')}"
+
+                st.code(f"""Model: {metadata.get('model_version', 'N/A')}
+Temperature: {metadata.get('temperature', 'N/A')}
+{max_tokens_display}
+Thinking Mode: {thinking_status}
+Thinking Budget: {thinking_budget}
+Max Retries: {metadata.get('max_retries', 'N/A')}
+Retry Delay: {metadata.get('retry_delay_seconds', 'N/A')}s""", language="text")
+
+            with col2:
+                st.markdown("**Execution Time:**")
+                st.code(f"""Start Time: {metadata.get('start_time', 'N/A')}
+End Time: {metadata.get('end_time', 'N/A')}
+Total Runtime: {metadata.get('total_runtime_formatted', 'N/A')}
+({metadata.get('total_runtime_seconds', 'N/A')} seconds)""", language="text")
+
+        # Download options
+        st.markdown("---")
+        st.subheader("📥 Download Reports")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            # Prepare full report (with summaries)
+            full_report = f"""# Multi-Agent Referee Evaluation Report (Summarized Version)
+Generated: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+NOTE: This report includes both summarized and full outputs from the multi-agent debate.
+
+## ROUND 0: PERSONA SELECTION
+
+Selected Personas: {', '.join(active_personas)}
+Weights: {json.dumps(weights, indent=2)}
+Justification: {results.get('round_0', {}).get('justification', 'N/A')}
+
+---
+
+## ROUND 1: INDEPENDENT EVALUATION
+
+"""
+            for role in active_personas:
+                summary_data = summaries['round_1_summaries'].get(role, {})
+                full_report += f"### {role} (Summary)\n{summary_data.get('summary', 'N/A')}\n\n"
+                full_report += f"### {role} (Full Report)\n{results['round_1'][role]}\n\n"
+
+            full_report += """---
+
+## ROUND 2A: CROSS-EXAMINATION
+
+"""
+            for role in active_personas:
+                summary_text = summaries['round_2a_summaries'].get(role, 'N/A')
+                full_report += f"### {role} (Summary)\n{summary_text}\n\n"
+                full_report += f"### {role} (Full Report)\n{results['round_2a'][role]}\n\n"
+
+            full_report += """---
+
+## ROUND 2B: ANSWERING QUESTIONS
+
+"""
+            for role in active_personas:
+                summary_text = summaries['round_2b_summaries'].get(role, 'N/A')
+                full_report += f"### {role} (Summary)\n{summary_text}\n\n"
+                full_report += f"### {role} (Full Report)\n{results['round_2b'][role]}\n\n"
+
+            full_report += """---
+
+## ROUND 2C: FINAL AMENDMENTS
+
+"""
+            for role in active_personas:
+                summary_data = summaries['round_2c_summaries'].get(role, {})
+                full_report += f"### {role} (Summary)\n{summary_data.get('summary', 'N/A')}\n\n"
+                full_report += f"### {role} (Full Report)\n{results['round_2c'][role]}\n\n"
+
+            # Add consensus calculation
+            if 'consensus' in results:
+                consensus = results['consensus']
+                full_report += f"""---
+
+## ROUND 3: WEIGHTED CONSENSUS CALCULATION
+
+### Deterministic Consensus Score: {consensus['weighted_score']:.3f}
+
+**Individual Verdicts:**
+"""
+                for persona in active_personas:
+                    verdict = consensus['verdicts'].get(persona, 'UNKNOWN')
+                    weight = weights.get(persona, 0)
+                    verdict_value = 1.0 if verdict == 'PASS' else 0.5 if verdict == 'REVISE' else 0.0
+                    contribution = weight * verdict_value
+                    full_report += f"- {persona} (weight={weight}): {verdict} = {verdict_value} → contribution = {contribution:.3f}\n"
+
+                full_report += f"""
+**Decision Thresholds:**
+- Score > 0.75: ACCEPT
+- 0.40 ≤ Score ≤ 0.75: REJECT AND RESUBMIT
+- Score < 0.40: REJECT
+
+**Computed Decision:** {consensus['decision']}
+
+---
+
+## EDITOR'S REPORT
+
+### Summary
+{summaries.get('editor_summary', 'N/A')}
+
+### Full Report
+{results['final_decision']}
+"""
+
+            st.download_button(
+                label="📄 Download Full Evaluation Report",
+                data=full_report,
+                file_name=f"multi_agent_evaluation_summarized_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                mime="text/markdown"
+            )
+
+        with col2:
+            # Prepare summary table in markdown
+            summary_md = f"""# Evaluation Summary Table
+Generated: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+| Persona | Weight | Round 1 Verdict | Final Verdict (R2C) | Changed? |
+|---------|--------|----------------|---------------------|----------|
+"""
+            for persona in active_personas:
+                weight = weights.get(persona, 0)
+                r1_v = r1_verdicts[persona]
+                r2c_v = r2c_verdicts[persona]
+                changed = "Yes" if r1_v != r2c_v else "No"
+                summary_md += f"| {persona} | {weight} | {r1_v} | {r2c_v} | {changed} |\n"
+
+            summary_md += f"\n**FINAL EDITORIAL DECISION:** {final_decision}\n"
+
+            st.download_button(
+                label="📊 Download Summary Table",
+                data=summary_md,
+                file_name=f"evaluation_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                mime="text/markdown"
+            )
+
+        with col3:
+            # Create Excel export for experiment tracking
+            excel_data = self.create_excel_export(results)
+
+            st.download_button(
+                label="📊 Download Excel (Experiment Tracking)",
+                data=excel_data,
+                file_name=f"experiment_tracking_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Download structured Excel file with configurations, prompt versions, and verdicts for experiment comparison"
+            )

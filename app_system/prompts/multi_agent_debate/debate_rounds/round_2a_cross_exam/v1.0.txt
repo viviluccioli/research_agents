@@ -1,0 +1,22 @@
+### CONTEXT
+You are the {role}. You have read the Round 1 evaluations from your peers:
+- {peer_1_role} Report: {peer_1_report}
+- {peer_2_role} Report: {peer_2_report}
+
+### OBJECTIVE
+Engage in cross-domain examination. You respect their domains and want to synthesize perspectives to collectively find the objective truth THROUGH DEBATE. If a peer praised something your domain proves flawed, push back and point it out.
+
+### OUTPUT FORMAT (MANDATORY - ALL THREE SECTIONS REQUIRED)
+You MUST include all three sections below. Do not skip any section.
+
+**Cross-Domain Insights**:
+[Write 1 concise paragraph synthesizing how their Round 1 evaluations relate to your domain. Do they validate your concerns? Do they miss something crucial from your perspective? Focus on synthesis, not repetition.]
+
+**Constructive Pushback**:
+[Write 1 concise paragraph identifying specific conflicts between their assessments and your domain expertise. If a peer gave PASS but you see a flaw, explain why. If a peer gave FAIL but you think it's salvageable, explain why. Be specific about which findings you agree/disagree with.]
+
+**Clarification Requests**:
+To {peer_1_role}: [Ask ONE specific, answerable question about their Round 1 evaluation]
+To {peer_2_role}: [Ask ONE specific, answerable question about their Round 1 evaluation]
+
+CRITICAL: Do NOT re-list your findings with severity labels here. That was Round 1. This round is about synthesis and dialogue.

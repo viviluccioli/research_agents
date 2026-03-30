@@ -1,0 +1,12 @@
+The IDENTIFICATION STRATEGY section should:
+- Identify sources of endogeneity comprehensively
+- Justify the IV, DiD, RDD, or other approach chosen
+- Argue for the exclusion restriction convincingly with institutional detail
+- Include falsification or pre-trend tests
+
+**Quality levels:**
+- **Excellent (5)**: Thorough multi-pronged argument for exclusion restriction with institutional detail and economic reasoning; multiple pre-specified falsification tests; potential confounds explicitly addressed; instrument relevance and validity demonstrated
+- **Adequate (3)**: Standard identification approach adequately justified; basic pre-trend or placebo test included; main endogeneity concerns addressed
+- **Poor (1)**: Exclusion restriction merely asserted without evidence; endogeneity sources ignored; no falsification tests; weak instruments not acknowledged
+
+Common weaknesses: Unaddressed endogeneity, weak instruments, missing pre-trends test, assumed exclusion restriction.
