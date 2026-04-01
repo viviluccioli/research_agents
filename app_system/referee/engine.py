@@ -14,7 +14,7 @@ from typing import Dict, List
 from pathlib import Path
 import yaml
 import streamlit as st
-from utils import single_query
+from utils import single_query, count_tokens
 
 # ==========================================
 # PERSONA SELECTION PROMPT (ROUND 0)
@@ -448,6 +448,114 @@ async def run_round_3(r2c_reports: Dict[str, str], selection_data: dict) -> str:
     system_prompt = "You are the Senior Editor. Follow the mathematical weighting instructions strictly."
     return await asyncio.to_thread(single_query, f"{system_prompt}\n\n{prompt_3}")
 
+def calculate_token_usage_and_cost(paper_text: str, results: Dict, num_personas: int = 3) -> Dict:
+    """
+    Calculate estimated token usage and cost for the debate pipeline.
+
+    Args:
+        paper_text: The full paper text
+        results: The debate results dictionary
+        num_personas: Number of active personas (default 3)
+
+    Returns:
+        Dictionary with token counts and cost estimates
+    """
+    # Count paper tokens
+    paper_tokens = count_tokens(paper_text)
+
+    # Estimate input tokens for each round
+    # Round 0: paper only
+    round_0_input = paper_tokens + 500  # selection prompt overhead
+
+    # Round 1: paper + system prompt per persona
+    round_1_input = num_personas * (paper_tokens + 1000)
+
+    # Round 2A: paper + system prompt + Round 1 reports per persona
+    r1_output_tokens = sum(count_tokens(report) for report in results.get('round_1', {}).values())
+    round_2a_input = num_personas * (paper_tokens + 1000 + r1_output_tokens)
+
+    # Round 2B: paper + system prompt + Round 2A transcript per persona
+    r2a_output_tokens = sum(count_tokens(report) for report in results.get('round_2a', {}).values())
+    round_2b_input = num_personas * (paper_tokens + 1000 + r2a_output_tokens)
+
+    # Round 2C: paper + system prompt + full debate transcript per persona
+    r2b_output_tokens = sum(count_tokens(report) for report in results.get('round_2b', {}).values())
+    full_transcript_tokens = r1_output_tokens + r2a_output_tokens + r2b_output_tokens
+    round_2c_input = num_personas * (paper_tokens + 1000 + full_transcript_tokens)
+
+    # Round 3: all final reports
+    r2c_output_tokens = sum(count_tokens(report) for report in results.get('round_2c', {}).values())
+    round_3_input = r2c_output_tokens + 1500
+
+    # Summarization: estimate input tokens for all summary calls
+    summary_input_r1 = num_personas * r1_output_tokens
+    summary_input_r2a = num_personas * r2a_output_tokens
+    summary_input_r2b = num_personas * r2b_output_tokens
+    summary_input_r2c = num_personas * r2c_output_tokens
+    editor_report_tokens = count_tokens(results.get('final_decision', ''))
+    summary_input_editor = editor_report_tokens + 500
+
+    # Total input tokens
+    total_debate_input = (round_0_input + round_1_input + round_2a_input +
+                         round_2b_input + round_2c_input + round_3_input)
+    total_summary_input = (summary_input_r1 + summary_input_r2a + summary_input_r2b +
+                          summary_input_r2c + summary_input_editor)
+    total_input_tokens = total_debate_input + total_summary_input
+
+    # Output tokens (actual from results)
+    total_debate_output = (r1_output_tokens + r2a_output_tokens + r2b_output_tokens +
+                          r2c_output_tokens + editor_report_tokens)
+
+    # Estimate summary output tokens (3-4 calls × 13 rounds, ~300-500 tokens each)
+    total_summary_output = num_personas * 4 * 400 + 768  # ~5200 tokens
+
+    total_output_tokens = total_debate_output + total_summary_output
+
+    # Cost calculation (Claude 3.7 Sonnet pricing)
+    # Input: $3.00 per million tokens
+    # Output: $15.00 per million tokens
+    input_cost_per_million = 3.00
+    output_cost_per_million = 15.00
+
+    input_cost = (total_input_tokens / 1_000_000) * input_cost_per_million
+    output_cost = (total_output_tokens / 1_000_000) * output_cost_per_million
+    total_cost = input_cost + output_cost
+
+    # Count LLM calls
+    debate_calls = 1 + (num_personas * 4) + 1  # Round 0 + (R1, R2A, R2B, R2C) + Round 3
+    summary_calls = (num_personas * 4) + 1  # R1, R2A, R2B, R2C summaries + editor
+    total_calls = debate_calls + summary_calls
+
+    return {
+        'paper_tokens': paper_tokens,
+        'input_tokens': {
+            'debate': total_debate_input,
+            'summarization': total_summary_input,
+            'total': total_input_tokens
+        },
+        'output_tokens': {
+            'debate': total_debate_output,
+            'summarization': total_summary_output,
+            'total': total_output_tokens
+        },
+        'total_tokens': total_input_tokens + total_output_tokens,
+        'llm_calls': {
+            'debate': debate_calls,
+            'summarization': summary_calls,
+            'total': total_calls
+        },
+        'cost_usd': {
+            'input': round(input_cost, 4),
+            'output': round(output_cost, 4),
+            'total': round(total_cost, 4)
+        },
+        'pricing': {
+            'input_per_million': input_cost_per_million,
+            'output_per_million': output_cost_per_million,
+            'model': 'Claude 3.7 Sonnet'
+        }
+    }
+
 async def execute_debate_pipeline(
     paper_text: str,
     progress_callback=None,
@@ -518,6 +626,13 @@ async def execute_debate_pipeline(
     end_time = datetime.datetime.now()
     runtime_seconds = (end_time - start_time).total_seconds()
 
+    # Calculate token usage and cost
+    token_cost_data = calculate_token_usage_and_cost(
+        paper_text,
+        results,
+        num_personas=len(active_personas)
+    )
+
     # Load prompt versions from config
     prompt_versions = {}
     try:
@@ -544,7 +659,8 @@ async def execute_debate_pipeline(
         'thinking_budget_tokens': 2048,
         'max_retries': 3,
         'retry_delay_seconds': 5,
-        'prompt_versions': prompt_versions
+        'prompt_versions': prompt_versions,
+        'token_usage': token_cost_data  # Add full token and cost data
     }
 
     if progress_callback:
