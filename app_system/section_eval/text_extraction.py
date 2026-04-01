@@ -54,10 +54,18 @@ def _extract_page_text(page) -> str:
     return txt
 
 
-def extract_text_from_pdf(file_bytes: bytes, warn_fn=None) -> str:
+def extract_text_from_pdf(file_bytes: bytes, warn_fn=None, cleanup_math: bool = False, llm_query_fn=None) -> str:
     """
     Extract text from PDF bytes using pdfplumber. Returns concatenated text.
-    warn_fn: optional callable(message) for warnings (e.g. st.warning).
+
+    Args:
+        file_bytes: PDF file bytes
+        warn_fn: optional callable(message) for warnings (e.g. st.warning)
+        cleanup_math: if True, use LLM to clean up poorly-extracted equations/tables
+        llm_query_fn: function(prompt) -> response for LLM cleanup (required if cleanup_math=True)
+
+    Returns:
+        Extracted text
     """
     import pdfplumber
 
@@ -83,7 +91,22 @@ def extract_text_from_pdf(file_bytes: bytes, warn_fn=None) -> str:
             pass
 
     raw = "".join(text_parts).strip()
-    return _fix_missing_spaces(raw)
+    raw = _fix_missing_spaces(raw)
+
+    # Optional LLM-based cleanup for equations and tables
+    if cleanup_math and llm_query_fn:
+        try:
+            from .math_cleanup import cleanup_math_regions_with_llm, add_quality_warnings
+            raw = cleanup_math_regions_with_llm(raw, llm_query_fn)
+            raw, warnings = add_quality_warnings(raw)
+            if warnings and warn_fn:
+                for warning in warnings:
+                    warn_fn(warning)
+        except Exception as e:
+            if warn_fn:
+                warn_fn(f"Math cleanup failed (continuing with raw extraction): {e}")
+
+    return raw
 
 
 def _fix_missing_spaces(text: str) -> str:
@@ -199,14 +222,25 @@ def strip_latex(text: str) -> str:
     return text.strip()
 
 
-def decode_file(filename: str, file_bytes: bytes, warn_fn=None) -> str:
+def decode_file(filename: str, file_bytes: bytes, warn_fn=None, cleanup_math: bool = False, llm_query_fn=None) -> str:
     """
     Route file bytes to the appropriate extractor based on file extension.
     Returns plain text.
+
+    Args:
+        filename: Name of the file
+        file_bytes: File content as bytes
+        warn_fn: optional callable(message) for warnings
+        cleanup_math: if True, use LLM to clean up poorly-extracted equations/tables (PDF only)
+        llm_query_fn: function(prompt) -> response for LLM cleanup (required if cleanup_math=True)
+
+    Returns:
+        Extracted text
     """
     if filename.endswith('.tex'):
         return strip_latex(file_bytes.decode('utf-8', errors='replace'))
     elif filename.endswith('.txt'):
         return file_bytes.decode('utf-8', errors='replace')
     else:
-        return extract_text_from_pdf(file_bytes, warn_fn=warn_fn)
+        return extract_text_from_pdf(file_bytes, warn_fn=warn_fn,
+                                    cleanup_math=cleanup_math, llm_query_fn=llm_query_fn)

@@ -1,5 +1,124 @@
 # Changelog — app_system
 
+## 04/01 (Continued)
+
+### Refactor: Documentation consolidation
+**Removed**
+- Deleted 8 redundant/outdated documentation files:
+  - `docs/API_CONFIGURATION.md` (redundant with CLAUDE.md)
+  - `docs/architecture.md` (1476 lines, overlapped with CLAUDE.md)
+  - `docs/REORGANIZATION.md` (outdated historical document)
+  - `docs/RESTRUCTURING_SUMMARY.md` (outdated historical document)
+  - `docs/PROMPT_MANAGEMENT.md` (documents unused versioning system)
+  - `docs/PROMPT_QUICKREF.md` (documents unused versioning system)
+  - `docs/PROMPT_SYSTEM_COMPLETE.md` (documents unused versioning system)
+  - `referee/REFEREE_PACKAGE_STRUCTURE.md` (redundant with CLAUDE.md)
+- Deleted 2 misleading README files:
+  - `prompts/multi_agent_debate/README.md` (documents unused external prompt system)
+  - `prompts/section_evaluator/README.md` (documents unused external prompt system)
+
+**Changed**
+- Updated CLAUDE.md to de-emphasize documentation creation
+- Relaxed changelog update requirement to major changes only
+- Updated file organization guidelines to discourage new .md files
+
+**Result**
+- Reduced from 15+ markdown files to 7 essential docs
+- Docs directory reduced from 132K to 71K
+- Removed misleading documentation about unused features
+- Clearer guidance to avoid over-documentation
+
+## 04/01
+
+### Feature: Enhanced PDF extraction with table support
+**Added**
+- Table extraction from PDFs using `pdfplumber.extract_tables()`
+- Tables are formatted as markdown and included in text sent to LLM
+- Each table labeled with sequential numbering and page location
+- Extraction diagnostics displayed in UI:
+  - Total pages processed
+  - Number of tables extracted
+  - Total character count
+- Warning message if no tables detected (suggests using LaTeX source instead)
+- Helper method `_format_table_as_markdown()` for clean table formatting
+- Page break markers in extracted text for better structure
+
+**Changed**
+- `referee/workflow.py:extract_text_from_pdf()` now returns text with embedded tables
+- PDF extraction now provides real-time feedback to users
+
+**Benefits**
+- Empiricist persona can now see regression tables and statistical results
+- All personas have access to tabular data (summary statistics, robustness checks, etc.)
+- Users can assess extraction quality before running full debate
+- Significantly improves evaluation reliability for empirical papers
+
+### Feature: Cost tracking and token usage analytics
+**Added**
+- `calculate_token_usage_and_cost()` function in `referee/engine.py`
+- Comprehensive token counting for all debate rounds and summarization calls
+- Cost estimation based on Claude 3.7 Sonnet pricing ($3/1M input, $15/1M output)
+- Token usage metadata added to debate results:
+  - Paper token count
+  - Input/output tokens split by debate vs. summarization
+  - Total token count
+  - LLM call counts (debate vs. summarization)
+  - Detailed cost breakdown (input, output, total)
+  - Pricing information for transparency
+- Prominent cost display at top of results: "💰 Estimated Cost: $X.XX (27 LLM calls, X tokens)"
+- Detailed cost breakdown in metadata section with two-column layout:
+  - Token breakdown (paper, input, output, by category)
+  - Cost breakdown (pricing, costs, LLM calls)
+- New "Cost Tracking" sheet in Excel export with full token and cost metrics
+
+**Changed**
+- `referee/engine.py:execute_debate_pipeline()` now calculates and includes token/cost data in metadata
+- `referee/workflow.py:display_debate_results()` displays cost prominently
+- `referee/workflow.py:create_excel_export()` includes cost tracking sheet
+- Added `count_tokens` import to `referee/engine.py`
+
+**Benefits**
+- Users can estimate costs before running large batches of papers
+- Full transparency on token usage and LLM API costs
+- Excel export enables cost tracking across experiments
+- Helps with budget planning and cost optimization
+- Token counts useful for debugging and optimization
+
+### Tool: PDF extraction testing utility
+**Added**
+- `tests/test_pdf_extraction.py` - standalone tool for testing PDF extraction quality
+- Command-line interface: `python test_pdf_extraction.py <pdf_path>`
+- Features:
+  - Extracts text and tables from any PDF
+  - Shows per-page statistics (characters, table count)
+  - Displays extraction summary (pages, tables, total chars, estimated tokens)
+  - Lists all detected tables with row/column counts
+  - Optional verbose mode (`-v`) shows sample table contents
+  - Saves full extracted text to file for manual inspection
+  - Quality assessment with color-coded warnings:
+    - 🔴 NO TABLES: Critical for empirical papers
+    - 🟡 FEW TABLES / SHORT TEXT: Potential issues
+    - 🟢 LOOKS REASONABLE: Good extraction
+- Executable script with comprehensive help text
+
+**Benefits**
+- Users can test PDF quality before running expensive debate pipeline
+- Helps diagnose extraction issues (missing tables, garbled text)
+- Shows exactly what the LLM receives
+- Enables quality control for paper corpus
+- Useful for comparing PDFs vs. LaTeX source extraction
+
+### Documentation
+**Added**
+- `docs/PDF_PROCESSING_AND_COSTS.md` - comprehensive analysis document covering:
+  - Current PDF extraction implementation and limitations
+  - Reliability assessment for different paper types
+  - Complete LLM call breakdown (27 calls per run)
+  - Token usage estimation methodology
+  - Cost calculation details with pricing
+  - Testing recommendations and scripts
+  - Immediate, medium-term, and long-term improvement suggestions
+
 ## 03/30
 
 ### Refactor: Referee package restructure for clarity

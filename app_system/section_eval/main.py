@@ -19,6 +19,8 @@ from .hierarchy import group_subsections
 from .evaluator import SectionEvaluator
 from .scoring import compute_overall_score, score_bar_html
 from .criteria.base import PAPER_TYPES, PAPER_TYPE_LABELS, SECTION_DEFAULTS
+from .region_fixer import render_region_fixer
+from utils import single_query
 
 
 # ---------------------------------------------------------------------------
@@ -133,14 +135,50 @@ class SectionEvaluatorApp:
         if st.button("Scan for Sections", key=f"{self.CACHE_PREFIX}_scan_{manuscript}"):
             with st.spinner("Extracting text..."):
                 paper_text = decode_file(manuscript, files[manuscript], warn_fn=st.warning)
-            with st.spinner("Detecting section headers..."):
-                detected = detect_sections(paper_text, self.llm)
-            st.session_state[scan_state_key] = detected
             st.session_state[text_state_key] = paper_text
-            # Clear stale preview and hierarchy caches from any previous scan
-            st.session_state.pop(f"{self.CACHE_PREFIX}_preview_{manuscript}", None)
-            st.session_state.pop(f"{self.CACHE_PREFIX}_hierarchy_{manuscript}", None)
-            st.success(f"Found {len(detected)} section(s).")
+            st.session_state[f"{self.CACHE_PREFIX}_extraction_done_{manuscript}"] = True
+            # Clear ALL previous state for this manuscript to start fresh
+            st.session_state.pop(f"{self.CACHE_PREFIX}_fixes_applied_{manuscript}", None)
+            st.session_state.pop(f"{self.CACHE_PREFIX}_region_fixes_{manuscript}", None)
+            st.session_state.pop(f"{self.CACHE_PREFIX}_fixed_text_{manuscript}", None)
+            st.session_state.pop(scan_state_key, None)  # Clear old section detection
+            st.success("✅ Text extracted!")
+            st.rerun()
+
+        # --- Phase 1.5: Region Fixing UI ---
+        extraction_done = st.session_state.get(f"{self.CACHE_PREFIX}_extraction_done_{manuscript}")
+        fixes_applied = st.session_state.get(f"{self.CACHE_PREFIX}_fixes_applied_{manuscript}")
+
+        if extraction_done and not fixes_applied:
+            paper_text = st.session_state.get(text_state_key, "")
+
+            st.markdown("### 🔍 Extraction Quality Check")
+
+            # Render the region fixer (this shows UI and collects user input)
+            render_region_fixer(
+                text=paper_text,
+                manuscript_name=manuscript,
+                cache_prefix=self.CACHE_PREFIX,
+                llm_query_fn=single_query,
+                min_confidence=0.5
+            )
+
+            # Stop here - wait for user to review/fix regions
+            return
+
+        # --- Phase 2: Section Detection (only after fixes applied) ---
+        if extraction_done and fixes_applied:
+            # Get the fixed text
+            paper_text = st.session_state.get(f"{self.CACHE_PREFIX}_fixed_text_{manuscript}",
+                                             st.session_state.get(text_state_key, ""))
+            st.session_state[text_state_key] = paper_text
+
+            # Run section detection once
+            if not st.session_state.get(scan_state_key):
+                with st.spinner("Detecting section headers..."):
+                    detected = detect_sections(paper_text, self.llm)
+                st.session_state[scan_state_key] = detected
+                st.success(f"Found {len(detected)} section(s).")
 
         # --- Phase 1.5: Missing section search ---
         detected = st.session_state.get(scan_state_key)

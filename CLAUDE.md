@@ -98,21 +98,20 @@ app_system/
 │   ├── app_summarized_only.py   # Summarized-only demo
 │   └── app_demo*.py             # Other demos
 │
-├── docs/                         # Documentation files
-│   ├── architecture.md
-│   ├── changelog.md
-│   ├── FRAMEWORK.md
-│   └── ...                      # All .md files except README.md
+├── docs/                         # Optional documentation
+│   ├── changelog.md             # Change history (update when appropriate)
+│   ├── FRAMEWORK.md             # High-level system overview
+│   └── *.md                     # Technical notes (PDF processing, math cleanup, etc.)
 │
 └── results/                      # Output directory
 ```
 
 **File placement rules**:
 - **Tests**: All `test_*.py` files go in `tests/`
-- **Documentation**: All `.md` files except `README.md` go in `docs/`
 - **New modules**: Create packages with `__init__.py` (e.g., `referee/`, `section_eval/`)
 - **Demo apps**: Alternate entry points go in `demos/`
 - **No root clutter**: Keep the `app_system/` root clean — only main entry point, utilities, and directories
+- **Documentation**: Avoid creating new `.md` files unless absolutely necessary; update existing docs instead
 
 ## Architecture
 
@@ -177,7 +176,7 @@ This is the core configuration file for the section evaluator. It defines:
 
 The referee package contains the multi-agent debate (MAD) system for generating referee reports.
 
-**Structure** (see `docs/REFEREE_PACKAGE_STRUCTURE.md` for details):
+**Structure**:
 ```
 referee/
 ├── workflow.py          # ⭐ Main production UI (RefereeWorkflow)
@@ -201,9 +200,9 @@ referee/
 
 **Import paths**: Use `from referee import RefereeWorkflow, execute_debate_pipeline` to access the main classes and functions. The underscore-prefixed subdirectories (`_utils/`, `_archived/`) contain internal/archived code not part of the main API.
 
-## Changelog rule
+## Changelog
 
-Every change to `app_system/section_eval/` or `app_system/referee/` must be documented in `app_system/docs/changelog.md`. Format: date header → category (Fix/Feature/Refactor/Performance/UI) → Changed/Added/Removed/Fixed sub-sections.
+For significant changes to `app_system/section_eval/` or `app_system/referee/`, consider updating `app_system/docs/changelog.md`. Only document major features, fixes, or breaking changes — not minor tweaks or refactors.
 
 ## Key gotchas
 

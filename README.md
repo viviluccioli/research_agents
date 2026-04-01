@@ -9,6 +9,26 @@ The full application lives in `app_system/`.
 
 ---
 
+## Key Features
+
+### Referee Report System
+- ⚙️ **Dual output modes**: Full output (14 API calls) or with LLM summarization (+10-15 calls for cleaner display)
+- 💰 **Automatic cost tracking**: Real-time token usage and cost estimation (input/output tokens, estimated USD)
+- 📊 **Enhanced PDF extraction**: Automatic table extraction and markdown formatting
+- 👥 **Configurable personas**: 5 specialized AI reviewers (Theorist, Empiricist, Historian, Visionary, Policymaker) — 3 selected per paper
+- 🎯 **Weighted consensus**: Mathematical aggregation using importance weights
+- 📦 **Multiple export formats**: Markdown transcript and ZIP package downloads
+
+### Section Evaluator
+- 🔍 **Auto-detection**: Two-pass section detection (heuristic scoring + LLM confirmation)
+- 📝 **Paper-type-specific criteria**: Customized evaluation for empirical/theoretical/policy papers
+- ⚠️ **Fatal-flaw scoring**: Critical criteria (e.g., causal ID, proof correctness) cap scores at 2.5 if ≤ 1.5
+- 📤 **Multi-format export**: Markdown, PDF, and CSV (useful for benchmarking across papers)
+- ✅ **Quote validation**: Verifies all LLM quotes exist in source text
+- 💾 **Smart caching**: SHA256-based result caching to avoid redundant API calls
+
+---
+
 ## Setup
 
 ### 1. Create and activate a virtual environment
@@ -91,12 +111,14 @@ streamlit run demos/app_demo2.py   # Demo 2: Standard errors issue
 
 ### Multi-Agent Referee
 
-1. Upload a manuscript PDF.
-2. Round 0: LLM selects the 3 most relevant personas for this paper and assigns importance weights.
-3. Round 1: All 3 personas evaluate independently in parallel.
-4. Rounds 2A/2B/2C: Structured cross-examination (questions → answers → final amendments).
-5. Round 3: Senior Editor computes weighted consensus and writes a formal referee report.
-6. Export full debate transcript as Markdown.
+1. Upload a manuscript PDF (with automatic table extraction).
+2. Choose output mode: full output only (14 API calls) or with LLM summarization (+10-15 calls for cleaner display).
+3. Round 0: LLM selects the 3 most relevant personas for this paper and assigns importance weights.
+4. Round 1: All 3 personas evaluate independently in parallel.
+5. Rounds 2A/2B/2C: Structured cross-examination (questions → answers → final amendments).
+6. Round 3: Senior Editor computes weighted consensus and writes a formal referee report.
+7. View detailed token usage and cost estimates (input/output tokens, API calls, estimated cost).
+8. Export full debate transcript as Markdown or downloadable ZIP package.
 
 ---
 
@@ -104,27 +126,74 @@ streamlit run demos/app_demo2.py   # Demo 2: Standard errors issue
 
 ```
 research_agents/
-├── app_system/                  # All application code
-│   ├── app.py                   # Streamlit entry point
-│   ├── utils.py                 # LLM infrastructure (single_query, ConversationManager)
-│   ├── referee.py               # Referee Report UI workflow
-│   ├── multi_agent_debate.py    # MAD pipeline orchestration (Rounds 0–3)
-│   ├── run_app.sh               # Launch script
-│   ├── section_eval/            # Section evaluator package
-│   │   ├── evaluator.py         # Core evaluation logic
-│   │   ├── main.py              # Section evaluator UI
-│   │   ├── scoring.py           # Weighted scoring + fatal-flaw floor
-│   │   ├── section_detection.py # Heuristic + LLM section detection
-│   │   ├── text_extraction.py   # PDF/LaTeX/TXT extraction
-│   │   ├── hierarchy.py         # Subsection grouping
-│   │   ├── criteria/base.py     # Criteria registry (paper-type × section)
-│   │   └── prompts/templates.py # Evaluation prompt builder
-│   ├── demos/                   # Pre-generated demo apps
-│   └── docs/                    # Architecture docs and changelog
-├── mad_experiments/             # Research scratch experiments
-├── papers/                      # Sample papers for testing
-├── requirements.txt
-└── CLAUDE.md                    # Guidance for Claude Code
+├── app_system/                        # All application code
+│   ├── app.py                         # Main Streamlit entry point (tabbed UI)
+│   ├── utils.py                       # LLM infrastructure (single_query, ConversationManager)
+│   ├── config.py                      # API configuration loader (reads .env)
+│   ├── run_app.sh                     # Launch script
+│   ├── .env.example                   # Template for API credentials
+│   ├── README.md                      # User-facing documentation
+│   │
+│   ├── referee/                       # ⭐ Referee report package
+│   │   ├── __init__.py               # Package exports
+│   │   ├── workflow.py               # Main production UI (RefereeWorkflow)
+│   │   ├── engine.py                 # Debate orchestration (execute_debate_pipeline)
+│   │   ├── _utils/                   # Internal utilities
+│   │   │   └── summarizer.py         # LLM summarization helpers
+│   │   └── _archived/                # Archived implementations
+│   │       └── full_output_ui.py     # Full verbose UI (not main code path)
+│   │
+│   ├── section_eval/                  # ⭐ Section evaluator package
+│   │   ├── __init__.py
+│   │   ├── main.py                   # SectionEvaluatorApp (UI entry point)
+│   │   ├── evaluator.py              # Core evaluation logic
+│   │   ├── scoring.py                # Weighted scoring + fatal-flaw floor
+│   │   ├── section_detection.py      # Heuristic + LLM section detection
+│   │   ├── text_extraction.py        # PDF/LaTeX/TXT extraction
+│   │   ├── hierarchy.py              # Subsection grouping
+│   │   ├── utils.py                  # Section eval utilities
+│   │   ├── criteria/                 # Criteria registry
+│   │   │   ├── __init__.py
+│   │   │   └── base.py               # Paper-type × section criteria
+│   │   └── prompts/                  # Section eval prompt templates
+│   │
+│   ├── prompts/                       # External prompt files (versioned)
+│   │   ├── multi_agent_debate/       # MAD system prompts
+│   │   └── section_evaluator/        # Section eval prompts
+│   │
+│   ├── tests/                         # All test files
+│   │   ├── __init__.py
+│   │   ├── test_consensus_calculation.py
+│   │   ├── test_prompt_loader.py
+│   │   ├── test_referee_display.py
+│   │   ├── test_referee_quick.py
+│   │   └── test_section_evaluator_prompts.py
+│   │
+│   ├── demos/                         # Demo/alternate apps
+│   │   ├── app_demo.py               # Demo 1: Adjusted R² issue
+│   │   ├── app_demo2.py              # Demo 2: Standard errors issue
+│   │   ├── app_demo3.py              # Demo 3
+│   │   ├── app_full_output.py        # Full output version demo
+│   │   └── app_summarized_only.py    # Summarized-only demo
+│   │
+│   ├── docs/                          # Documentation files
+│   │   ├── architecture.md           # System architecture
+│   │   ├── changelog.md              # Change history
+│   │   ├── API_CONFIGURATION.md      # API setup guide
+│   │   ├── FRAMEWORK.md              # Evaluation framework
+│   │   ├── PROMPT_MANAGEMENT.md      # Prompt versioning
+│   │   └── ...                       # Other docs
+│   │
+│   └── results/                       # Output directory
+│
+├── mad_experiments/                   # Research scratch experiments
+│   ├── exp-1/
+│   └── exp-2/
+│
+├── papers/                            # Sample papers for testing
+├── requirements.txt                   # Python dependencies
+├── README.md                          # This file
+└── CLAUDE.md                          # Guidance for Claude Code
 ```
 
 ---
@@ -133,8 +202,12 @@ research_agents/
 
 | Setting | Location | Default |
 |---|---|---|
-| API endpoint | `app_system/utils.py:API_BASE` | Federal Reserve MartinAI |
+| API credentials | `app_system/.env` | (copy from `.env.example`) |
+| API endpoint | `app_system/config.py` | Loaded from `.env:API_BASE` |
 | MAD model | `app_system/utils.py:model_selection3` | Claude 3.7 Sonnet |
 | Section eval model | `app_system/utils.py:model_selection` | Claude Sonnet 4.5 |
-| Fatal-flaw threshold | `section_eval/criteria/base.py` | score ≤ 1.5 → cap at 2.5 |
-| Cache prefix | `section_eval/evaluator.py:CACHE_PREFIX` | `"se_cache_v3"` |
+| Referee personas | `app_system/referee/engine.py:SYSTEM_PROMPTS` | 5 personas (3 selected per paper) |
+| Referee output mode | UI toggle in app | Full output (14 calls) or with summarization (+10-15 calls) |
+| Token/cost tracking | `app_system/referee/engine.py` | Automatic estimation with detailed breakdown |
+| Fatal-flaw threshold | `app_system/section_eval/criteria/base.py` | score ≤ 1.5 → cap at 2.5 |
+| Cache prefix | `app_system/section_eval/evaluator.py:CACHE_PREFIX` | `"se_cache_v3"` |
