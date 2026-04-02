@@ -36,6 +36,9 @@ from referee._archived.full_output_ui import (
     generate_summary_table
 )
 
+# Import equation/table fixer
+from section_eval.region_fixer import render_region_fixer
+
 
 class RefereeWorkflow:
     """
@@ -70,7 +73,7 @@ The **Multi-Agent Debate (MAD) System** evaluates research papers through struct
 
 The system operates in **5 sequential rounds**:
 
-1. **Round 0 - Persona Selection**: An LLM Chief Editor selects 3 of 5 available personas most relevant to the paper and assigns importance weights (summing to 1.0).
+1. **Round 0 - Persona Selection**: Select 2-5 personas either automatically (LLM Chief Editor chooses based on paper content and type) or manually. Importance weights are assigned (summing to 1.0), either automatically or manually.
 
 2. **Round 1 - Independent Evaluation**: Each selected persona independently evaluates the paper from their domain expertise, identifying flaws with severity labels ([FATAL], [MAJOR], [MINOR]) and providing an initial verdict (PASS/REVISE/FAIL).
 
@@ -90,7 +93,7 @@ The system operates in **5 sequential rounds**:
 
 ---
 
-### 👥 Available Personas (3 will be selected)
+### 👥 Available Personas (2-5 will be selected)
             """)
 
             # Compact horizontal persona cards
@@ -144,7 +147,7 @@ The system operates in **5 sequential rounds**:
             </div>
             """, unsafe_allow_html=True)
 
-            st.info("💡 The system automatically selects the 3 most relevant personas based on your paper's content and assigns importance weights.")
+            st.info("💡 You can choose personas and weights automatically (system-driven) or manually configure them below.")
 
         st.markdown("---")
 
@@ -178,63 +181,313 @@ The system operates in **5 sequential rounds**:
 
         st.markdown("---")
 
-        if st.button("🚀 Run Multi-Agent Evaluation", type="primary"):
-            if not manuscript_file:
-                st.error("Please select a manuscript file.")
-                return
+        # ==================== PERSONA SELECTION & CUSTOM CONTEXT ====================
+        st.markdown("#### 🎭 Persona Selection & Evaluation Context")
 
-            with st.spinner("Extracting text from manuscript..."):
-                # Extract text from manuscript
-                paper_text = self.extract_text_from_pdf(files[manuscript_file])
+        # Get paper type from global session state
+        paper_type = st.session_state.get("paper_type")
+        if paper_type:
+            st.success(f"📄 **Paper Type**: {paper_type.title()} — This will guide persona selection")
+        else:
+            st.warning("⚠️ No paper type selected. Please select a paper type above for better persona recommendations.")
 
-            # Run the multi-agent debate
-            try:
-                # Create progress tracking
-                progress_placeholder = st.empty()
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+        # Custom context text box
+        custom_context = st.text_area(
+            "**Optional: Additional Evaluation Context** (Tell us what you're looking for)",
+            placeholder="Example: 'Focus on statistical rigor and replicability' or 'Evaluate suitability for submission to top field journal' or 'Check if methods are appropriate for policy analysis'",
+            height=100,
+            help="Provide any specific evaluation priorities, focus areas, or context that should guide the review. This will be considered throughout the entire debate process.",
+            key="custom_context_input"
+        )
 
-                def update_progress(stage, progress):
-                    status_text.text(f"🔄 {stage}")
-                    progress_bar.progress(progress)
+        st.markdown("---")
+        st.markdown("**Persona Selection Mode**")
 
-                # Execute debate pipeline
-                with st.spinner("Running multi-agent debate..."):
-                    debate_results = asyncio.run(
-                        execute_debate_pipeline(paper_text, progress_callback=update_progress)
-                    )
+        persona_mode = st.radio(
+            "How should personas be selected?",
+            [
+                "🤖 Fully Automatic (System chooses personas and weights)",
+                "🔢 Specify Count (You choose how many personas, system selects which ones)",
+                "🎯 Manual Selection (You choose personas, system assigns weights)",
+                "⚙️ Full Manual (You choose personas AND weights)"
+            ],
+            key="persona_selection_mode",
+            help="Choose how much control you want over persona selection. The paper type (if selected) will guide automatic selections."
+        )
 
-                # Run summarization pass (optional)
-                if use_summarizer:
-                    with st.spinner("Compressing outputs for display (additional LLM pass)..."):
-                        summaries = asyncio.run(summarize_all_rounds(debate_results))
+        # Initialize variables for persona selection
+        manual_personas = None
+        manual_weights = None
+
+        # Handle different persona selection modes
+        if persona_mode == "🔢 Specify Count (You choose how many personas, system selects which ones)":
+            num_personas = st.slider(
+                "How many personas should evaluate the paper?",
+                min_value=2,
+                max_value=5,
+                value=3,
+                key="num_personas_slider"
+            )
+            st.info(f"System will automatically select {num_personas} personas based on paper content" + (f" and paper type ({paper_type})" if paper_type else ""))
+
+            # For this mode, we'll need to update the engine to support persona count
+            # For now, we'll use manual_personas with None values to signal count-based selection
+            # This requires additional engine updates - for now default to auto
+            st.warning("⚠️ Count-based selection will default to automatic 3-persona selection. Full count control coming soon.")
+
+        elif persona_mode == "🎯 Manual Selection (You choose personas, system assigns weights)":
+            st.markdown("**Select 2-5 personas to evaluate your paper:**")
+            available_personas = ["Theorist", "Empiricist", "Historian", "Visionary", "Policymaker"]
+
+            cols = st.columns(5)
+            selected_personas_list = []
+
+            for idx, persona in enumerate(available_personas):
+                with cols[idx]:
+                    if st.checkbox(persona, key=f"persona_check_{persona}"):
+                        selected_personas_list.append(persona)
+
+            if len(selected_personas_list) < 2:
+                st.warning("⚠️ Please select at least 2 personas")
+            elif len(selected_personas_list) > 5:
+                st.error("❌ Maximum 5 personas allowed")
+            else:
+                manual_personas = selected_personas_list
+                st.success(f"✅ Selected {len(manual_personas)} personas: {', '.join(manual_personas)}")
+                st.info("The system will automatically assign importance weights to these personas based on the paper content" + (f" and paper type ({paper_type})" if paper_type else ""))
+
+        elif persona_mode == "⚙️ Full Manual (You choose personas AND weights)":
+            st.markdown("**Select 2-5 personas and assign their weights:**")
+            available_personas = ["Theorist", "Empiricist", "Historian", "Visionary", "Policymaker"]
+
+            st.info("💡 Weights must sum to 1.0. Higher weight = more influence on final decision")
+
+            selected_personas_dict = {}
+            cols_check = st.columns(5)
+            selected_for_weight = []
+
+            # First row: checkboxes
+            for idx, persona in enumerate(available_personas):
+                with cols_check[idx]:
+                    if st.checkbox(persona, key=f"persona_check_manual_{persona}"):
+                        selected_for_weight.append(persona)
+
+            if len(selected_for_weight) < 2:
+                st.warning("⚠️ Please select at least 2 personas")
+            elif len(selected_for_weight) > 5:
+                st.error("❌ Maximum 5 personas allowed")
+            else:
+                # Second section: weight sliders
+                st.markdown("**Assign weights (must sum to 1.0):**")
+                cols_weight = st.columns(len(selected_for_weight))
+
+                temp_weights = {}
+                for idx, persona in enumerate(selected_for_weight):
+                    with cols_weight[idx]:
+                        default_weight = 1.0 / len(selected_for_weight)
+                        weight = st.number_input(
+                            persona,
+                            min_value=0.0,
+                            max_value=1.0,
+                            value=default_weight,
+                            step=0.05,
+                            key=f"weight_{persona}"
+                        )
+                        temp_weights[persona] = weight
+
+                weight_sum = sum(temp_weights.values())
+                st.metric("Weight Sum", f"{weight_sum:.2f}", delta=f"{weight_sum - 1.0:.2f}" if abs(weight_sum - 1.0) > 0.01 else "✓")
+
+                if abs(weight_sum - 1.0) < 0.01:  # Allow small floating point errors
+                    manual_personas = selected_for_weight
+                    manual_weights = temp_weights
+                    st.success(f"✅ Weights configured: {', '.join([f'{p} ({w:.2f})' for p, w in manual_weights.items()])}")
                 else:
-                    # Skip summarization - use empty summaries dict
-                    summaries = {
-                        'round_1_summaries': {},
-                        'round_2a_summaries': {},
-                        'round_2b_summaries': {},
-                        'round_2c_summaries': {},
-                        'editor_summary': None
-                    }
-                    st.info("⚡ Skipped summarization - showing full outputs only")
+                    st.error(f"❌ Weights must sum to 1.0 (current sum: {weight_sum:.2f})")
 
-                # Store results in session state
-                st.session_state.debate_results = debate_results
-                st.session_state.debate_summaries = summaries
-                st.session_state.manuscript_file = manuscript_file  # Store filename for downloads
-                st.session_state.use_summarizer = use_summarizer  # Store for display
+        else:  # Fully Automatic
+            st.info("🤖 The system will automatically select 3 personas and assign weights based on paper content" + (f" and paper type ({paper_type})" if paper_type else ""))
 
-                # Clear progress indicators
-                progress_bar.empty()
-                status_text.empty()
+        st.markdown("---")
 
-                # Display results
-                self.display_debate_results(debate_results, summaries)
+        # Session state keys for this workflow
+        extraction_key = f"referee_extraction_done_{manuscript_file}"
+        fixes_key = f"referee_fixes_applied_{manuscript_file}"
+        text_key = f"referee_text_{manuscript_file}"
+        fixed_text_key = f"referee_fixed_text_{manuscript_file}"
 
-            except Exception as e:
-                st.error(f"Error during multi-agent evaluation: {e}")
-                st.exception(e)
+        # Check workflow state
+        extraction_done = st.session_state.get(extraction_key, False)
+        fixes_applied = st.session_state.get(fixes_key, False)
+
+        # Stage 1: Initial button to extract text
+        if not extraction_done:
+            st.info("👉 **Next Step**: Extract text from your PDF and review equations/tables before running the debate")
+            if st.button("🚀 Step 1: Extract & Review Text", type="primary", use_container_width=True):
+                if not manuscript_file:
+                    st.error("Please select a manuscript file.")
+                    return
+
+                with st.spinner("Extracting text from manuscript..."):
+                    # Extract text from manuscript
+                    paper_text = self.extract_text_from_pdf(files[manuscript_file])
+                    st.session_state[text_key] = paper_text
+                    st.session_state[extraction_key] = True
+                    st.success("✅ Text extracted! Review equations/tables below.")
+                    st.rerun()
+
+        # Stage 2: Show equation fixer UI (after extraction, before fixes applied)
+        if extraction_done and not fixes_applied:
+            paper_text = st.session_state.get(text_key, "")
+
+            # Workflow progress indicator
+            st.markdown("### 📍 Two-Stage Workflow")
+            col_stage1, col_arrow, col_stage2 = st.columns([1, 0.2, 1])
+
+            with col_stage1:
+                st.markdown(
+                    '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                    'color: white; padding: 15px; border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 1: Fix Equations & Tables</strong><br/>'
+                    '<span style="font-size: 12px;">Currently here ✓</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            with col_arrow:
+                st.markdown('<div style="text-align: center; font-size: 30px;">→</div>', unsafe_allow_html=True)
+
+            with col_stage2:
+                st.markdown(
+                    '<div style="background: #e0e0e0; color: #666; padding: 15px; '
+                    'border-radius: 10px; text-align: center; border: 2px dashed #999;">'
+                    '<strong>STAGE 2: Run Multi-Agent Debate</strong><br/>'
+                    '<span style="font-size: 12px;">After fixing</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            st.markdown("---")
+            st.markdown("### 🔍 Extraction Quality Check")
+
+            # Render the region fixer
+            render_region_fixer(
+                text=paper_text,
+                manuscript_name=manuscript_file,
+                cache_prefix="referee",
+                llm_query_fn=single_query,
+                min_confidence=0.5
+            )
+
+            # Don't proceed until fixes are applied
+            return
+
+        # Stage 3: Run the debate (after fixes applied)
+        if extraction_done and fixes_applied:
+            # Get the fixed text
+            paper_text = st.session_state.get(fixed_text_key, st.session_state.get(text_key, ""))
+
+            # Workflow progress indicator for stage 2
+            st.markdown("### 📍 Two-Stage Workflow")
+            col_stage1, col_arrow, col_stage2 = st.columns([1, 0.2, 1])
+
+            with col_stage1:
+                st.markdown(
+                    '<div style="background: #4caf50; color: white; padding: 15px; '
+                    'border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 1: Fix Equations & Tables</strong><br/>'
+                    '<span style="font-size: 12px;">✓ Complete</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            with col_arrow:
+                st.markdown('<div style="text-align: center; font-size: 30px;">→</div>', unsafe_allow_html=True)
+
+            with col_stage2:
+                st.markdown(
+                    '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                    'color: white; padding: 15px; border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 2: Run Multi-Agent Debate</strong><br/>'
+                    '<span style="font-size: 12px;">Ready to run ✓</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            st.markdown("---")
+
+            col_run, col_reset = st.columns([3, 1])
+
+            with col_run:
+                run_debate = st.button("🚀 Step 2: Run Multi-Agent Evaluation", type="primary", use_container_width=True)
+
+            with col_reset:
+                if st.button("🔄 Start Over", use_container_width=True):
+                    # Clear all session state for this manuscript
+                    st.session_state.pop(extraction_key, None)
+                    st.session_state.pop(fixes_key, None)
+                    st.session_state.pop(text_key, None)
+                    st.session_state.pop(fixed_text_key, None)
+                    st.session_state.pop(f"referee_region_fixes_{manuscript_file}", None)
+                    st.info("Workflow reset. Click 'Step 1' to start over.")
+                    st.rerun()
+
+            if run_debate:
+                # Run the multi-agent debate
+                try:
+                    # Create progress tracking
+                    progress_placeholder = st.empty()
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+
+                    def update_progress(stage, progress):
+                        status_text.text(f"🔄 {stage}")
+                        progress_bar.progress(progress)
+
+                    # Execute debate pipeline with enhanced context
+                    with st.spinner("Running multi-agent debate..."):
+                        debate_results = asyncio.run(
+                            execute_debate_pipeline(
+                                paper_text,
+                                progress_callback=update_progress,
+                                paper_type=paper_type,
+                                custom_context=custom_context if custom_context and custom_context.strip() else None,
+                                manual_personas=manual_personas,
+                                manual_weights=manual_weights
+                            )
+                        )
+
+                    # Run summarization pass (optional)
+                    if use_summarizer:
+                        with st.spinner("Compressing outputs for display (additional LLM pass)..."):
+                            summaries = asyncio.run(summarize_all_rounds(debate_results))
+                    else:
+                        # Skip summarization - use empty summaries dict
+                        summaries = {
+                            'round_1_summaries': {},
+                            'round_2a_summaries': {},
+                            'round_2b_summaries': {},
+                            'round_2c_summaries': {},
+                            'editor_summary': None
+                        }
+                        st.info("⚡ Skipped summarization - showing full outputs only")
+
+                    # Store results in session state
+                    st.session_state.debate_results = debate_results
+                    st.session_state.debate_summaries = summaries
+                    st.session_state.manuscript_file = manuscript_file  # Store filename for downloads
+                    st.session_state.use_summarizer = use_summarizer  # Store for display
+
+                    # Clear progress indicators
+                    progress_bar.empty()
+                    status_text.empty()
+
+                    # Display results
+                    self.display_debate_results(debate_results, summaries)
+
+                except Exception as e:
+                    st.error(f"Error during multi-agent evaluation: {e}")
+                    st.exception(e)
 
 
     def extract_text_from_pdf(self, file_content):

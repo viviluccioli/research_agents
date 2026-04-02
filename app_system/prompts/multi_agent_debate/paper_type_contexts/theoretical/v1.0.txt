@@ -1,0 +1,15 @@
+PAPER TYPE CONTEXT: THEORETICAL PAPER
+
+This is a theoretical economics paper that develops formal mathematical models, derives analytical results, and provides proofs.
+
+PERSONA SELECTION GUIDANCE:
+- **Theorist** (HIGHLY RECOMMENDED): Essential for evaluating mathematical rigor, proof correctness, model assumptions, and derivations. Should typically receive the highest weight.
+- **Empiricist**: Relevant only if the paper includes calibration, numerical simulations, or empirical validation of theoretical predictions. Lower weight or exclude if purely analytical.
+- **Historian**: Important for assessing whether the theoretical contribution is novel and properly situated in the existing literature. Moderate to high weight recommended.
+- **Visionary**: Highly relevant for evaluating whether the model provides new insights, challenges existing paradigms, or opens new research directions. Should receive significant weight.
+- **Policymaker**: Relevant if the theoretical model has clear policy implications or normative conclusions. Lower weight for abstract general equilibrium models.
+
+TYPICAL PERSONA COMBINATIONS FOR THEORETICAL PAPERS:
+1. Theorist (0.50) + Visionary (0.30) + Historian (0.20) - For paradigm-shifting models
+2. Theorist (0.45) + Historian (0.30) + Policymaker (0.25) - For policy-relevant theory
+3. Theorist (0.40) + Visionary (0.35) + Empiricist (0.25) - For models with quantitative calibration

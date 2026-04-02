@@ -320,6 +320,39 @@ def main():
     if st.session_state.file_data:
         st.info(f"Available files: {', '.join(list(st.session_state.file_data.keys()))}")
 
+    # ----------------- Global Paper Type Selector -----------------
+    st.markdown("---")
+    st.markdown("### Paper Type Selection")
+    st.markdown("Select your paper type to enable type-specific evaluation across both workflows.")
+
+    from section_eval.criteria.base import PAPER_TYPES, PAPER_TYPE_LABELS
+
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        paper_type_labels = [PAPER_TYPE_LABELS[pt] for pt in PAPER_TYPES]
+        selected_label = st.selectbox(
+            "Paper Type",
+            options=["— Select paper type —"] + paper_type_labels,
+            key="global_paper_type_select",
+            help="Choose the type that best describes your paper. This affects evaluation criteria in Section Evaluator and persona selection in Referee Report."
+        )
+
+    with col2:
+        if selected_label and selected_label != "— Select paper type —":
+            paper_type = PAPER_TYPES[paper_type_labels.index(selected_label)]
+            st.session_state.paper_type = paper_type
+
+            # Show brief description
+            descriptions = {
+                "empirical": "Data-driven analysis with econometric methods and identification strategies",
+                "theoretical": "Formal mathematical models with proofs and derivations",
+                "policy": "Policy analysis with real-world applications and recommendations"
+            }
+            st.info(f"**{selected_label}**: {descriptions.get(paper_type, '')}")
+        else:
+            st.session_state.paper_type = None
+            st.info("Please select a paper type to enable full functionality in both evaluation workflows.")
+
     # ----------------- Create visual tabs -----------------
     tab_labels = list(WORKFLOWS.keys())
     tab_objs = st.tabs(tab_labels)

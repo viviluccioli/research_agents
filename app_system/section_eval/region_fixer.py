@@ -58,23 +58,42 @@ def render_region_fixer(
         st.session_state[fixes_key] = {}
     fixes = st.session_state[fixes_key]
 
-    # UI Header
+    # Count by type
+    equation_count = sum(1 for r in regions if r.region_type == 'equation')
+    table_count = sum(1 for r in regions if r.region_type == 'table')
+
+    # UI Header with statistics
     st.warning(f"⚠️ Detected **{len(regions)} problematic region(s)** in extraction")
-    st.caption(
-        "Review and fix critical content (especially equations). "
-        "You can auto-clean with LLM, paste corrected text, or skip."
+
+    # Statistics breakdown
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("🔢 Equations", equation_count)
+    with col2:
+        st.metric("📊 Tables", table_count)
+    with col3:
+        st.metric("📈 Total Regions", len(regions))
+
+    st.info(
+        "**Why fix these?** PDF extraction often breaks LaTeX equations and table formatting. "
+        "You can auto-clean with AI, paste corrected LaTeX, or manually edit. "
+        "Fixing these improves evaluation accuracy."
     )
 
-    # Show/hide toggle
+    # Show/hide toggle - DEFAULT TO TRUE for better visibility
     show_fixer = st.checkbox(
-        f"📋 Review {len(regions)} region(s)",
-        value=False,
+        f"📋 Review and fix {len(regions)} region(s)",
+        value=True,  # Changed from False to True
         key=f"{cache_prefix}_show_fixer_{manuscript_name}",
-        help="Expand to review and fix problematic regions"
+        help="Uncheck to skip review (not recommended for papers with equations)"
     )
 
     if not show_fixer:
-        st.info("💡 Skipping review. Click above to review and fix regions.")
+        st.warning("⚠️ You're skipping quality review. Equations and tables may be garbled.")
+        if st.button("Continue anyway", key=f"{cache_prefix}_skip_confirm_{manuscript_name}"):
+            st.session_state[f"{cache_prefix}_fixes_applied_{manuscript_name}"] = True
+            st.session_state[f"{cache_prefix}_fixed_text_{manuscript_name}"] = text
+            st.rerun()
         return text
 
     st.markdown("---")
@@ -92,20 +111,37 @@ def render_region_fixer(
 
     # Apply fixes button
     st.markdown("---")
+
+    # Show summary of what will be fixed
+    num_fixed = len([f for f in fixes.values() if f.get("action") != "skip"])
+    num_llm = len([f for f in fixes.values() if f.get("action") == "llm"])
+    num_manual = len([f for f in fixes.values() if f.get("action") == "manual"])
+    num_image = len([f for f in fixes.values() if f.get("action") == "image"])
+
+    st.subheader("📋 Summary")
+    col_sum1, col_sum2, col_sum3, col_sum4 = st.columns(4)
+    with col_sum1:
+        st.metric("🤖 AI-Cleaned", num_llm)
+    with col_sum2:
+        st.metric("✏️ Manual Edits", num_manual)
+    with col_sum3:
+        st.metric("🖼️ Image OCR", num_image)
+    with col_sum4:
+        st.metric("⏭️ Skipped", len(regions) - num_fixed)
+
     col1, col2, col3 = st.columns([2, 2, 1])
 
     with col1:
-        num_fixed = len([f for f in fixes.values() if f.get("action") != "skip"])
-        st.caption(f"📊 {num_fixed} region(s) will be modified")
+        st.caption(f"📊 {num_fixed} of {len(regions)} region(s) will be modified")
 
     with col2:
-        if st.button("✅ Apply Fixes and Continue", type="primary",
+        if st.button("✅ Apply Fixes and Continue to Referee Report", type="primary",
                     key=f"{cache_prefix}_apply_fixes_{manuscript_name}"):
             modified_text = _apply_fixes(text, regions, fixes)
             # Signal that review is complete
             st.session_state[f"{cache_prefix}_fixes_applied_{manuscript_name}"] = True
             st.session_state[f"{cache_prefix}_fixed_text_{manuscript_name}"] = modified_text
-            st.success(f"✅ Applied {num_fixed} fix(es)")
+            st.success(f"✅ Applied {num_fixed} fix(es) - Ready for evaluation!")
             st.rerun()
 
     with col3:
@@ -142,29 +178,45 @@ def _render_region_editor(
 
     fix = fixes[region_id]
 
-    # Region header
+    # Region header with icon
+    region_icon = "🔢" if region.region_type == "equation" else "📊"
+    confidence_pct = int(region.confidence * 100)
+
+    # Color code by type
+    type_color = "#ff6b6b" if region.region_type == "equation" else "#4dabf7"
+
     with st.expander(
-        f"**Region #{region_idx}** — {region.region_type.upper()} "
-        f"(confidence: {region.confidence:.2f})",
-        expanded=(region_idx <= 3)  # Expand first 3
+        f"{region_icon} **Region #{region_idx}** — {region.region_type.upper()} "
+        f"(quality issue: {confidence_pct}%)",
+        expanded=(region_idx <= 5)  # Expand first 5 instead of 3
     ):
+        # Type-specific guidance
+        if region.region_type == "equation":
+            st.caption(
+                "🧮 **Equation detected** — Subscripts, superscripts, or Greek letters may be misaligned"
+            )
+        else:
+            st.caption(
+                "📊 **Table detected** — Column alignment or row structure may be broken"
+            )
+
         # Show original content
-        st.markdown("**📄 Current Extraction:**")
+        st.markdown("**📄 Current Extraction** (what the system sees):")
         st.code(region.content, language=None)
 
         # Action selector
-        st.markdown("**🔧 How to fix this region:**")
+        st.markdown("**🔧 Choose how to fix this region:**")
 
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
             if st.button(
-                "🤖 Auto-clean",
+                "🤖 Auto-clean with AI",
                 key=f"{cache_prefix}_llm_{region_idx}_{manuscript_name}",
-                help="Use LLM to clean up formatting",
+                help="Let AI automatically fix formatting issues",
                 use_container_width=True
             ):
-                with st.spinner("Cleaning with LLM..."):
+                with st.spinner("Cleaning with AI..."):
                     prompt = build_cleanup_prompt(region)
                     try:
                         cleaned = llm_query_fn(prompt).strip()
@@ -172,13 +224,13 @@ def _render_region_editor(
                         fix["content"] = cleaned
                         st.rerun()
                     except Exception as e:
-                        st.error(f"LLM error: {e}")
+                        st.error(f"AI error: {e}")
 
         with col2:
             if st.button(
-                "✏️ Paste text",
+                "✏️ Manual edit/LaTeX",
                 key=f"{cache_prefix}_manual_{region_idx}_{manuscript_name}",
-                help="Manually paste corrected text",
+                help="Paste corrected text or raw LaTeX equation",
                 use_container_width=True
             ):
                 fix["action"] = "manual"
@@ -213,17 +265,55 @@ def _render_region_editor(
 
         elif fix["action"] == "manual":
             st.markdown("**✏️ Paste Corrected Text:**")
+
+            # LaTeX help info
+            if region.region_type == 'equation':
+                with st.expander("💡 **LaTeX Guide & Examples**", expanded=False):
+                    st.markdown("""
+**Common LaTeX Notation:**
+- **Subscripts**: `X_t` → X with subscript t
+- **Superscripts**: `X^2` → X squared
+- **Both**: `X_{t-1}` → X with subscript (t-1)
+- **Fractions**: `\\frac{a}{b}` → a/b as fraction
+- **Greek letters**: `α, β, γ, δ, ε, θ, σ, Σ`
+- **Summation**: `\\sum_{i=1}^{n}`
+- **Integrals**: `\\int_{0}^{1}`
+
+**Example Equations:**
+```
+Y_t = β_0 + β_1 X_{t-1} + ε_t
+
+log(GDP_t) = α + β log(K_t) + γ log(L_t)
+
+\\frac{∂L}{∂θ} = \\sum_{i=1}^{n} (y_i - \\hat{y}_i)
+
+Pr(Y=1|X) = \\frac{exp(Xβ)}{1 + exp(Xβ)}
+```
+
+**Tips:**
+- The system understands LaTeX even without full `$...$` delimiters
+- You can mix LaTeX notation with plain text
+- Use Unicode symbols directly if you prefer: α, β, ∑, ∫
+                    """)
+                st.caption("✍️ Paste your corrected equation below:")
+
             manual_text = st.text_area(
-                "Corrected text",
+                "Corrected text (supports LaTeX notation)",
                 value=fix.get("content", region.content),
-                height=150,
+                height=200,  # Increased from 150
                 key=f"{cache_prefix}_manual_text_{region_idx}_{manuscript_name}",
-                help="Paste the corrected equation or table here"
+                placeholder="Paste your corrected equation, table, or LaTeX code here..."
             )
-            if st.button("💾 Save", key=f"{cache_prefix}_save_manual_{region_idx}_{manuscript_name}"):
-                fix["content"] = manual_text
-                st.success("✅ Saved!")
-                st.rerun()
+
+            col_save, col_preview = st.columns([1, 3])
+            with col_save:
+                if st.button("💾 Save", key=f"{cache_prefix}_save_manual_{region_idx}_{manuscript_name}"):
+                    fix["content"] = manual_text
+                    st.success("✅ Saved!")
+                    st.rerun()
+            with col_preview:
+                if manual_text and manual_text != region.content:
+                    st.caption(f"✓ Ready to save ({len(manual_text)} chars)")
 
         elif fix["action"] == "image":
             st.markdown("**🖼️ Upload Screenshot:**")

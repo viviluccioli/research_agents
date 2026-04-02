@@ -5,27 +5,27 @@
 paper_type_contexts:
   empirical:
     version: "v1.0"
-    file: "paper_type_contexts/empirical_{version}.txt"
+    file: "paper_type_contexts/empirical/{version}.txt"
 
   theoretical:
     version: "v1.0"
-    file: "paper_type_contexts/theoretical_{version}.txt"
+    file: "paper_type_contexts/theoretical/{version}.txt"
 
   policy:
     version: "v1.0"
-    file: "paper_type_contexts/policy_{version}.txt"
+    file: "paper_type_contexts/policy/{version}.txt"
 
   finance:
     version: "v1.0"
-    file: "paper_type_contexts/finance_{version}.txt"
+    file: "paper_type_contexts/finance/{version}.txt"
 
   macro:
     version: "v1.0"
-    file: "paper_type_contexts/macro_{version}.txt"
+    file: "paper_type_contexts/macro/{version}.txt"
 
   systematic_review:
     version: "v1.0"
-    file: "paper_type_contexts/systematic_review_{version}.txt"
+    file: "paper_type_contexts/systematic_review/{version}.txt"
 
 # Section Type Guidance Prompts
 section_type_guidance:

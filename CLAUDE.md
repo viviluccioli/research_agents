@@ -113,6 +113,95 @@ app_system/
 - **No root clutter**: Keep the `app_system/` root clean — only main entry point, utilities, and directories
 - **Documentation**: Avoid creating new `.md` files unless absolutely necessary; update existing docs instead
 
+## Prompt Organization
+
+The `prompts/` directory contains versioned external prompt files for both the referee and section evaluator systems. **All prompts follow a standardized organization pattern**:
+
+### Directory Structure
+```
+prompts/
+├── multi_agent_debate/
+│   ├── config.yaml                      # Version control config
+│   ├── personas/                        # Persona system prompts
+│   │   ├── theorist/
+│   │   │   └── v1.0.txt
+│   │   ├── empiricist/
+│   │   │   └── v1.0.txt
+│   │   └── ...
+│   ├── debate_rounds/                   # Round-specific prompts
+│   │   ├── round_0_selection/
+│   │   │   └── v1.0.txt
+│   │   └── ...
+│   └── paper_type_contexts/             # Paper type guidance
+│       ├── empirical/
+│       │   └── v1.0.txt
+│       ├── theoretical/
+│       │   └── v1.0.txt
+│       └── policy/
+│           └── v1.0.txt
+│
+└── section_evaluator/
+    ├── config.yaml                      # Version control config
+    ├── paper_type_contexts/             # Paper type contexts
+    │   ├── empirical/
+    │   │   └── v1.0.txt
+    │   ├── theoretical/
+    │   │   └── v1.0.txt
+    │   ├── policy/
+    │   │   └── v1.0.txt
+    │   └── ... (finance/, macro/, systematic_review/)
+    ├── section_type_guidance/           # Section-specific guidance
+    │   └── ... (flat files, not subdirs)
+    └── master_prompts/
+        └── ... (flat files, not subdirs)
+```
+
+### Organization Rules
+
+**CRITICAL**: When adding or modifying prompts, follow these rules:
+
+1. **Subdirectory Structure**: Each prompt category should have subdirectories for each item:
+   - ✅ `paper_type_contexts/empirical/v1.0.txt`
+   - ❌ `paper_type_contexts/empirical_v1.0.txt`
+
+2. **Version Naming**: Version files always named `v{MAJOR}.{MINOR}.txt`:
+   - ✅ `v1.0.txt`, `v1.1.txt`, `v2.0.txt`
+   - ❌ `empirical_v1.0.txt`, `round_1.txt`
+
+3. **Config Management**: Update `config.yaml` when changing versions:
+   ```yaml
+   paper_type_contexts:
+     empirical:
+       version: "v1.0"
+       file: "paper_type_contexts/empirical/{version}.txt"
+   ```
+   The `{version}` placeholder is substituted by the prompt loader.
+
+4. **Prompt Loader**: Both systems use a `PromptLoader` class that:
+   - Reads `config.yaml` to determine active versions
+   - Loads prompts from versioned files
+   - Caches loaded prompts for performance
+   - Provides `reload_prompts()` for testing changes
+
+5. **Creating New Versions**:
+   ```bash
+   # Copy existing version
+   cp prompts/section_evaluator/paper_type_contexts/empirical/v1.0.txt \
+      prompts/section_evaluator/paper_type_contexts/empirical/v1.1.txt
+
+   # Edit the new version
+   nano prompts/section_evaluator/paper_type_contexts/empirical/v1.1.txt
+
+   # Update config.yaml to use new version
+   # Change: version: "v1.0" → version: "v1.1"
+   ```
+
+6. **Exception**: Some categories like `section_type_guidance/` and `master_prompts/` still use flat files (e.g., `abstract_v1.0.txt`) rather than subdirectories. This is acceptable for categories with many small files where subdirectories would add clutter.
+
+**When to use subdirectories vs flat files**:
+- **Use subdirectories**: For categories with few items (5-10) where each item may have multiple versions and is conceptually distinct (personas, paper types, debate rounds)
+- **Use flat files**: For categories with many items (20+) that are tightly coupled and rarely version independently (section guidance, master prompts)
+
 ## Architecture
 
 The entire working application lives in `app_system/`. The repo root contains only setup files; `mad_experiments/` and `papers/` are research scratch folders.

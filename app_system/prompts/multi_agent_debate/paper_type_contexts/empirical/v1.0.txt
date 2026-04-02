@@ -1,0 +1,15 @@
+PAPER TYPE CONTEXT: EMPIRICAL PAPER
+
+This is an empirical economics paper that uses data and econometric methods to test hypotheses and establish causal relationships.
+
+PERSONA SELECTION GUIDANCE:
+- **Empiricist** (HIGHLY RECOMMENDED): Critical for evaluating identification strategies, data quality, econometric methods, and statistical validity. Should typically receive the highest or second-highest weight.
+- **Theorist**: Relevant if the paper develops or tests a theoretical model using empirical methods. Lower weight if purely applied.
+- **Historian**: Important for assessing literature positioning and whether the empirical contribution is genuinely novel. Moderate weight recommended.
+- **Visionary**: Useful for evaluating whether the empirical approach represents a methodological innovation or paradigm shift. Lower weight unless the paper introduces new empirical methods.
+- **Policymaker**: Highly relevant if the paper has clear policy implications from empirical findings. Essential for papers analyzing policy interventions or welfare effects.
+
+TYPICAL PERSONA COMBINATIONS FOR EMPIRICAL PAPERS:
+1. Empiricist (0.45) + Historian (0.30) + Policymaker (0.25) - For applied policy papers
+2. Empiricist (0.50) + Historian (0.30) + Theorist (0.20) - For theory-testing papers
+3. Empiricist (0.40) + Visionary (0.35) + Historian (0.25) - For methodologically innovative papers

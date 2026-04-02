@@ -53,12 +53,10 @@ class SectionEvaluatorApp:
         st.subheader("Section-by-Section Manuscript Evaluation")
         st.write("Evaluate economics paper sections with paper-type-specific criteria, weighted scoring, and quote-backed assessments.")
 
-        # --- Step 0: Paper type selection ---
-        self._render_paper_type_selector()
-
-        paper_type = st.session_state.get(f"{self.CACHE_PREFIX}_paper_type")
+        # --- Get paper type from global session state (set in app.py) ---
+        paper_type = st.session_state.get("paper_type")
         if not paper_type:
-            st.info("Select a paper type above to begin.")
+            st.warning("⚠️ Please select a paper type above to begin evaluation.")
             return
 
         # --- Step 1b: Figures/tables location ---
@@ -152,6 +150,34 @@ class SectionEvaluatorApp:
         if extraction_done and not fixes_applied:
             paper_text = st.session_state.get(text_state_key, "")
 
+            # Workflow progress indicator
+            st.markdown("### 📍 Two-Stage Workflow")
+            col_stage1, col_arrow, col_stage2 = st.columns([1, 0.2, 1])
+
+            with col_stage1:
+                st.markdown(
+                    '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                    'color: white; padding: 15px; border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 1: Fix Equations & Tables</strong><br/>'
+                    '<span style="font-size: 12px;">Currently here ✓</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            with col_arrow:
+                st.markdown('<div style="text-align: center; font-size: 30px;">→</div>', unsafe_allow_html=True)
+
+            with col_stage2:
+                st.markdown(
+                    '<div style="background: #e0e0e0; color: #666; padding: 15px; '
+                    'border-radius: 10px; text-align: center; border: 2px dashed #999;">'
+                    '<strong>STAGE 2: Run Evaluation</strong><br/>'
+                    '<span style="font-size: 12px;">After fixing</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            st.markdown("---")
             st.markdown("### 🔍 Extraction Quality Check")
 
             # Render the region fixer (this shows UI and collects user input)
@@ -168,6 +194,35 @@ class SectionEvaluatorApp:
 
         # --- Phase 2: Section Detection (only after fixes applied) ---
         if extraction_done and fixes_applied:
+            # Workflow progress indicator for stage 2
+            st.markdown("### 📍 Two-Stage Workflow")
+            col_stage1, col_arrow, col_stage2 = st.columns([1, 0.2, 1])
+
+            with col_stage1:
+                st.markdown(
+                    '<div style="background: #4caf50; color: white; padding: 15px; '
+                    'border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 1: Fix Equations & Tables</strong><br/>'
+                    '<span style="font-size: 12px;">✓ Complete</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            with col_arrow:
+                st.markdown('<div style="text-align: center; font-size: 30px;">→</div>', unsafe_allow_html=True)
+
+            with col_stage2:
+                st.markdown(
+                    '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                    'color: white; padding: 15px; border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 2: Run Evaluation</strong><br/>'
+                    '<span style="font-size: 12px;">Currently here ✓</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            st.markdown("---")
+
             # Get the fixed text
             paper_text = st.session_state.get(f"{self.CACHE_PREFIX}_fixed_text_{manuscript}",
                                              st.session_state.get(text_state_key, ""))
@@ -178,7 +233,7 @@ class SectionEvaluatorApp:
                 with st.spinner("Detecting section headers..."):
                     detected = detect_sections(paper_text, self.llm)
                 st.session_state[scan_state_key] = detected
-                st.success(f"Found {len(detected)} section(s).")
+                st.success(f"✅ Found {len(detected)} section(s) - Ready for evaluation!")
 
         # --- Phase 1.5: Missing section search ---
         detected = st.session_state.get(scan_state_key)

@@ -10,11 +10,37 @@ import asyncio
 import datetime
 import json
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 from pathlib import Path
 import yaml
 import streamlit as st
 from utils import single_query, count_tokens
+
+# ==========================================
+# PROMPT LOADING UTILITIES
+# ==========================================
+def load_paper_type_context(paper_type: str) -> str:
+    """Load paper type context guidance for persona selection."""
+    if not paper_type or paper_type not in ["empirical", "theoretical", "policy"]:
+        return ""
+
+    try:
+        prompt_path = Path(__file__).parent.parent / "prompts" / "multi_agent_debate" / "paper_type_contexts" / paper_type / "v1.0.txt"
+        with open(prompt_path, 'r') as f:
+            return f.read()
+    except Exception as e:
+        print(f"Warning: Could not load paper type context for {paper_type}: {e}")
+        return ""
+
+def load_custom_context_guide() -> str:
+    """Load custom context integration instructions."""
+    try:
+        prompt_path = Path(__file__).parent.parent / "prompts" / "multi_agent_debate" / "custom_context_integration.txt"
+        with open(prompt_path, 'r') as f:
+            return f.read()
+    except Exception as e:
+        print(f"Warning: Could not load custom context guide: {e}")
+        return ""
 
 # ==========================================
 # PERSONA SELECTION PROMPT (ROUND 0)
@@ -249,21 +275,145 @@ DEBATE_PROMPTS = {
 # ==========================================
 # ORCHESTRATION FUNCTIONS
 # ==========================================
-async def call_llm_async(system_prompt: str, user_prompt: str, role: str, paper_text: str) -> str:
-    """Async wrapper for LLM calls."""
-    # Combine paper text with user prompt
-    full_prompt = f"{user_prompt}\n\nPAPER TEXT:\n{paper_text}"
+async def call_llm_async(
+    system_prompt: str,
+    user_prompt: str,
+    role: str,
+    paper_text: str,
+    custom_context: Optional[str] = None
+) -> str:
+    """
+    Async wrapper for LLM calls.
+
+    Args:
+        system_prompt: The role-specific system prompt
+        user_prompt: The round-specific user prompt
+        role: The persona name
+        paper_text: The paper text
+        custom_context: Optional user-provided evaluation priorities
+
+    Returns:
+        LLM response string
+    """
+    # Build the full prompt
+    full_prompt = user_prompt
+
+    # Add custom context if provided
+    if custom_context and custom_context.strip():
+        custom_guide = load_custom_context_guide()
+        full_prompt += f"\n\n{custom_guide}\n\nUSER EVALUATION PRIORITIES:\n{custom_context}\n"
+
+    full_prompt += f"\n\nPAPER TEXT:\n{paper_text}"
 
     # Call the LLM (running in thread to avoid blocking)
     combined_prompt = f"{system_prompt}\n\n{full_prompt}"
     return await asyncio.to_thread(single_query, combined_prompt)
 
-async def run_round_0_selection(paper_text: str) -> dict:
-    """Round 0: Dynamically selects the 3 most relevant personas and their weights."""
+async def run_round_0_selection(
+    paper_text: str,
+    paper_type: Optional[str] = None,
+    custom_context: Optional[str] = None,
+    manual_personas: Optional[List[str]] = None,
+    manual_weights: Optional[Dict[str, float]] = None
+) -> dict:
+    """
+    Round 0: Dynamically selects the 3 most relevant personas and their weights.
+
+    Args:
+        paper_text: The paper to evaluate
+        paper_type: Optional paper type (empirical/theoretical/policy) for context
+        custom_context: Optional user-provided evaluation priorities
+        manual_personas: If provided, skip LLM selection and use these personas
+        manual_weights: If provided with manual_personas, use these exact weights
+
+    Returns:
+        Dictionary with selected_personas, weights, and justification
+    """
     print("[Round 0] Starting persona selection...")
 
-    # Call LLM for persona selection
-    selection_prompt = f"{SELECTION_PROMPT}\n\nPAPER TEXT:\n{paper_text}"
+    # If manual selection is provided, use it directly
+    if manual_personas:
+        if manual_weights:
+            # User provided both personas and weights
+            print(f"[Round 0] Using manual selection: {manual_personas} with manual weights: {manual_weights}")
+            return {
+                "selected_personas": manual_personas,
+                "weights": manual_weights,
+                "justification": "Manually selected by user with specified weights."
+            }
+        else:
+            # User provided personas, LLM assigns weights
+            print(f"[Round 0] Using manual personas {manual_personas}, LLM will assign weights...")
+            weight_prompt = f"{SELECTION_PROMPT}\n\n"
+            weight_prompt += f"The user has pre-selected these personas: {', '.join(manual_personas)}\n"
+            weight_prompt += "Your task is ONLY to assign appropriate weights to these personas (must sum to 1.0).\n\n"
+
+            # Add paper type context if available
+            if paper_type:
+                paper_context = load_paper_type_context(paper_type)
+                if paper_context:
+                    weight_prompt += f"\n{paper_context}\n\n"
+
+            # Add custom context if available
+            if custom_context and custom_context.strip():
+                weight_prompt += f"\nUSER EVALUATION PRIORITIES:\n{custom_context}\n\n"
+
+            weight_prompt += f"\nPAPER TEXT:\n{paper_text}\n\n"
+            weight_prompt += f"OUTPUT FORMAT: Return ONLY valid JSON with these personas {manual_personas} and their weights."
+
+            response = await asyncio.to_thread(single_query, weight_prompt)
+
+            try:
+                json_match = re.search(r"\{.*\}", response, re.DOTALL)
+                if json_match:
+                    data = json.loads(json_match.group())
+                else:
+                    data = json.loads(response)
+
+                weights = data.get("weights", {})
+
+                # Validate that weights are for the correct personas
+                if set(weights.keys()) == set(manual_personas):
+                    print(f"[Round 0] LLM assigned weights: {weights}")
+                    return {
+                        "selected_personas": manual_personas,
+                        "weights": weights,
+                        "justification": data.get("justification", "Weights assigned by LLM for user-selected personas.")
+                    }
+                else:
+                    # Fallback to equal weights
+                    equal_weight = 1.0 / len(manual_personas)
+                    weights = {p: equal_weight for p in manual_personas}
+                    print(f"[Round 0] LLM weights invalid, using equal weights: {weights}")
+                    return {
+                        "selected_personas": manual_personas,
+                        "weights": weights,
+                        "justification": "Equal weights assigned due to LLM parsing error."
+                    }
+            except Exception as e:
+                print(f"[Round 0] Failed to parse LLM weights: {e}")
+                equal_weight = 1.0 / len(manual_personas)
+                weights = {p: equal_weight for p in manual_personas}
+                return {
+                    "selected_personas": manual_personas,
+                    "weights": weights,
+                    "justification": "Equal weights assigned due to parsing error."
+                }
+
+    # Full automatic selection by LLM
+    selection_prompt = f"{SELECTION_PROMPT}\n\n"
+
+    # Add paper type context if available
+    if paper_type:
+        paper_context = load_paper_type_context(paper_type)
+        if paper_context:
+            selection_prompt += f"{paper_context}\n\n"
+
+    # Add custom context if available
+    if custom_context and custom_context.strip():
+        selection_prompt += f"USER EVALUATION PRIORITIES:\n{custom_context}\n\n"
+
+    selection_prompt += f"PAPER TEXT:\n{paper_text}"
     response = await asyncio.to_thread(single_query, selection_prompt)
 
     try:
@@ -292,18 +442,18 @@ async def run_round_0_selection(paper_text: str) -> dict:
             "justification": "Default selection due to parsing error."
         }
 
-async def run_round_1(active_personas: list, paper_text: str) -> Dict[str, str]:
+async def run_round_1(active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 1: Independent evaluation by selected agents."""
     user_prompt = "Please read the attached paper and provide your Round 1 evaluation based on your role."
 
     tasks = {}
     for role in active_personas:
-        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], user_prompt, role, paper_text)
+        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], user_prompt, role, paper_text, custom_context)
 
     results = await asyncio.gather(*tasks.values())
     return dict(zip(tasks.keys(), results))
 
-async def run_round_2a(r1_reports: Dict[str, str], active_personas: list, paper_text: str) -> Dict[str, str]:
+async def run_round_2a(r1_reports: Dict[str, str], active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 2A: Cross-examination between agents."""
     tasks = {}
     for role in active_personas:
@@ -315,12 +465,12 @@ async def run_round_2a(r1_reports: Dict[str, str], active_personas: list, paper_
             peer_2_role=peers[1],
             peer_2_report=r1_reports[peers[1]]
         )
-        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2a, role, paper_text)
+        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2a, role, paper_text, custom_context)
 
     results = await asyncio.gather(*tasks.values())
     return dict(zip(tasks.keys(), results))
 
-async def run_round_2b(r2a_reports: Dict[str, str], active_personas: list, paper_text: str) -> Dict[str, str]:
+async def run_round_2b(r2a_reports: Dict[str, str], active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 2B: Direct examination - answering clarification questions."""
     # Build R2A transcript
     r2a_transcript = ""
@@ -336,13 +486,13 @@ async def run_round_2b(r2a_reports: Dict[str, str], active_personas: list, paper
             peer_2_role=peers[1],
             r2a_transcript=r2a_transcript
         )
-        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2b, role, paper_text)
+        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2b, role, paper_text, custom_context)
 
     results = await asyncio.gather(*tasks.values())
     return dict(zip(tasks.keys(), results))
 
 async def run_round_2c(r1_reports: Dict[str, str], r2a_reports: Dict[str, str],
-                       r2b_reports: Dict[str, str], active_personas: list, paper_text: str) -> Dict[str, str]:
+                       r2b_reports: Dict[str, str], active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 2C: Final amendments after full debate."""
     # Build complete debate transcript
     transcript = "ROUND 1 REPORTS:\n"
@@ -363,7 +513,7 @@ async def run_round_2c(r1_reports: Dict[str, str], r2a_reports: Dict[str, str],
             role=role,
             debate_transcript=transcript
         )
-        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2c, role, paper_text)
+        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2c, role, paper_text, custom_context)
 
     results = await asyncio.gather(*tasks.values())
     return dict(zip(tasks.keys(), results))
@@ -561,7 +711,11 @@ async def execute_debate_pipeline(
     progress_callback=None,
     paper_context: str = None,
     model_key: str = None,
-    temperature: float = None
+    temperature: float = None,
+    paper_type: Optional[str] = None,
+    custom_context: Optional[str] = None,
+    manual_personas: Optional[List[str]] = None,
+    manual_weights: Optional[Dict[str, float]] = None
 ):
     """
     Orchestrates the entire multi-agent debate workflow with endogenous persona selection.
@@ -569,9 +723,13 @@ async def execute_debate_pipeline(
     Args:
         paper_text: The full text of the paper to evaluate
         progress_callback: Optional callback function to report progress
-        paper_context: Optional additional context about the paper (currently unused)
+        paper_context: Optional additional context about the paper (deprecated, use custom_context)
         model_key: Optional model selection key (currently unused)
         temperature: Optional temperature setting (currently unused)
+        paper_type: Optional paper type (empirical/theoretical/policy) for persona selection guidance
+        custom_context: Optional user-provided evaluation priorities and focus areas
+        manual_personas: Optional list of manually selected personas (2-5 personas)
+        manual_weights: Optional dict of manually specified weights for manual_personas
 
     Returns:
         Dictionary containing all round results, selection data, and final decision
@@ -584,24 +742,30 @@ async def execute_debate_pipeline(
     # Round 0: Persona Selection
     if progress_callback:
         progress_callback("Round 0: Selecting Personas", 0.05)
-    selection_data = await run_round_0_selection(paper_text)
+    selection_data = await run_round_0_selection(
+        paper_text,
+        paper_type=paper_type,
+        custom_context=custom_context,
+        manual_personas=manual_personas,
+        manual_weights=manual_weights
+    )
     active_personas = selection_data["selected_personas"]
     results['round_0'] = selection_data
 
     # Round 1: Independent Evaluation
     if progress_callback:
         progress_callback("Round 1: Independent Evaluation", 0.15)
-    results['round_1'] = await run_round_1(active_personas, paper_text)
+    results['round_1'] = await run_round_1(active_personas, paper_text, custom_context)
 
     # Round 2A: Cross-Examination
     if progress_callback:
         progress_callback("Round 2A: Cross-Examination", 0.35)
-    results['round_2a'] = await run_round_2a(results['round_1'], active_personas, paper_text)
+    results['round_2a'] = await run_round_2a(results['round_1'], active_personas, paper_text, custom_context)
 
     # Round 2B: Direct Examination
     if progress_callback:
         progress_callback("Round 2B: Answering Questions", 0.55)
-    results['round_2b'] = await run_round_2b(results['round_2a'], active_personas, paper_text)
+    results['round_2b'] = await run_round_2b(results['round_2a'], active_personas, paper_text, custom_context)
 
     # Round 2C: Final Amendments
     if progress_callback:
@@ -611,7 +775,8 @@ async def execute_debate_pipeline(
         results['round_2a'],
         results['round_2b'],
         active_personas,
-        paper_text
+        paper_text,
+        custom_context
     )
 
     # Calculate consensus before Round 3

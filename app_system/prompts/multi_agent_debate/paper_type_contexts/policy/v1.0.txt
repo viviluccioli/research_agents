@@ -1,0 +1,15 @@
+PAPER TYPE CONTEXT: POLICY PAPER
+
+This is a policy-oriented economics paper that analyzes real-world policy issues, evaluates interventions, or provides actionable recommendations for policymakers.
+
+PERSONA SELECTION GUIDANCE:
+- **Policymaker** (HIGHLY RECOMMENDED): Essential for evaluating practical applicability, welfare implications, and whether recommendations are actionable. Should typically receive the highest weight.
+- **Empiricist**: Highly relevant if the paper uses data to support policy recommendations. Important for assessing whether empirical evidence is properly analyzed. Should receive high weight for evidence-based policy papers.
+- **Theorist**: Relevant if the paper uses formal models to derive policy insights. Lower weight for purely descriptive policy analysis.
+- **Historian**: Important for contextualizing the policy problem and assessing whether the paper properly accounts for institutional history and prior policy attempts. Moderate weight recommended.
+- **Visionary**: Useful for evaluating whether the policy recommendations are forward-thinking and whether the paper identifies novel policy approaches. Moderate weight for innovative policy proposals.
+
+TYPICAL PERSONA COMBINATIONS FOR POLICY PAPERS:
+1. Policymaker (0.45) + Empiricist (0.35) + Historian (0.20) - For empirical policy evaluation
+2. Policymaker (0.50) + Historian (0.30) + Visionary (0.20) - For forward-looking policy proposals
+3. Policymaker (0.40) + Theorist (0.30) + Empiricist (0.30) - For theory-informed policy analysis
