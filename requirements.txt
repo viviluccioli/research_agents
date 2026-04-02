@@ -4,3 +4,5 @@ tiktoken
 pdfplumber
 streamlit
 python-dotenv
+Pillow
+pytesseract  # Optional: for OCR support in region fixer

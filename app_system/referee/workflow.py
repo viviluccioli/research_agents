@@ -13,6 +13,7 @@ import os
 import asyncio
 import datetime
 import re
+import zipfile
 from typing import Dict, List, Any
 from io import BytesIO
 import pdfplumber
@@ -34,6 +35,9 @@ from referee._archived.full_output_ui import (
     format_round2c_output,
     generate_summary_table
 )
+
+# Import equation/table fixer
+from section_eval.region_fixer import render_region_fixer
 
 
 class RefereeWorkflow:
@@ -69,7 +73,7 @@ The **Multi-Agent Debate (MAD) System** evaluates research papers through struct
 
 The system operates in **5 sequential rounds**:
 
-1. **Round 0 - Persona Selection**: An LLM Chief Editor selects 3 of 5 available personas most relevant to the paper and assigns importance weights (summing to 1.0).
+1. **Round 0 - Persona Selection**: Select 2-5 personas either automatically (LLM Chief Editor chooses based on paper content and type) or manually. Importance weights are assigned (summing to 1.0), either automatically or manually.
 
 2. **Round 1 - Independent Evaluation**: Each selected persona independently evaluates the paper from their domain expertise, identifying flaws with severity labels ([FATAL], [MAJOR], [MINOR]) and providing an initial verdict (PASS/REVISE/FAIL).
 
@@ -89,7 +93,7 @@ The system operates in **5 sequential rounds**:
 
 ---
 
-### 👥 Available Personas (3 will be selected)
+### 👥 Available Personas (2-5 will be selected)
             """)
 
             # Compact horizontal persona cards
@@ -143,7 +147,7 @@ The system operates in **5 sequential rounds**:
             </div>
             """, unsafe_allow_html=True)
 
-            st.info("💡 The system automatically selects the 3 most relevant personas based on your paper's content and assigns importance weights.")
+            st.info("💡 You can choose personas and weights automatically (system-driven) or manually configure them below.")
 
         st.markdown("---")
 
@@ -159,69 +163,421 @@ The system operates in **5 sequential rounds**:
             key="manuscript_selector"
         )
 
-        if st.button("🚀 Run Multi-Agent Evaluation", type="primary"):
-            if not manuscript_file:
-                st.error("Please select a manuscript file.")
-                return
+        # Output mode selection
+        st.markdown("---")
+        st.markdown("#### ⚙️ Output Settings")
 
-            with st.spinner("Extracting text from manuscript..."):
-                # Extract text from manuscript
-                paper_text = self.extract_text_from_pdf(files[manuscript_file])
+        use_summarizer = st.checkbox(
+            "📊 Use LLM Summarizer (cleaner display, more API calls)",
+            value=False,
+            help="When enabled: Adds ~10-15 extra API calls to compress debate outputs for cleaner display.\n"
+                 "When disabled: Shows full outputs only, 14 API calls total (3 personas × 4 rounds + 2 editor)."
+        )
 
-            # Run the multi-agent debate
-            try:
-                # Create progress tracking
-                progress_placeholder = st.empty()
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+        if use_summarizer:
+            st.info("💡 **Mode**: Summarized display (adds ~10-15 API calls for compression)")
+        else:
+            st.success("⚡ **Mode**: Full output only (14 API calls total - most cost-efficient)")
 
-                def update_progress(stage, progress):
-                    status_text.text(f"🔄 {stage}")
-                    progress_bar.progress(progress)
+        st.markdown("---")
 
-                # Execute debate pipeline
-                with st.spinner("Running multi-agent debate..."):
-                    debate_results = asyncio.run(
-                        execute_debate_pipeline(paper_text, progress_callback=update_progress)
-                    )
+        # ==================== PERSONA SELECTION & CUSTOM CONTEXT ====================
+        st.markdown("#### 🎭 Persona Selection & Evaluation Context")
 
-                # Run summarization pass
-                with st.spinner("Compressing outputs for display (additional LLM pass)..."):
-                    summaries = asyncio.run(summarize_all_rounds(debate_results))
+        # Get paper type from global session state
+        paper_type = st.session_state.get("paper_type")
+        if paper_type:
+            st.success(f"📄 **Paper Type**: {paper_type.title()} — This will guide persona selection")
+        else:
+            st.warning("⚠️ No paper type selected. Please select a paper type above for better persona recommendations.")
 
-                # Store results in session state
-                st.session_state.debate_results = debate_results
-                st.session_state.debate_summaries = summaries
+        # Custom context text box
+        custom_context = st.text_area(
+            "**Optional: Additional Evaluation Context** (Tell us what you're looking for)",
+            placeholder="Example: 'Focus on statistical rigor and replicability' or 'Evaluate suitability for submission to top field journal' or 'Check if methods are appropriate for policy analysis'",
+            height=100,
+            help="Provide any specific evaluation priorities, focus areas, or context that should guide the review. This will be considered throughout the entire debate process.",
+            key="custom_context_input"
+        )
 
-                # Clear progress indicators
-                progress_bar.empty()
-                status_text.empty()
+        st.markdown("---")
+        st.markdown("**Persona Selection Mode**")
 
-                # Display results
-                self.display_debate_results(debate_results, summaries)
+        persona_mode = st.radio(
+            "How should personas be selected?",
+            [
+                "🤖 Fully Automatic (System chooses personas and weights)",
+                "🔢 Specify Count (You choose how many personas, system selects which ones)",
+                "🎯 Manual Selection (You choose personas, system assigns weights)",
+                "⚙️ Full Manual (You choose personas AND weights)"
+            ],
+            key="persona_selection_mode",
+            help="Choose how much control you want over persona selection. The paper type (if selected) will guide automatic selections."
+        )
 
-            except Exception as e:
-                st.error(f"Error during multi-agent evaluation: {e}")
-                st.exception(e)
+        # Initialize variables for persona selection
+        manual_personas = None
+        manual_weights = None
+
+        # Handle different persona selection modes
+        if persona_mode == "🔢 Specify Count (You choose how many personas, system selects which ones)":
+            num_personas = st.slider(
+                "How many personas should evaluate the paper?",
+                min_value=2,
+                max_value=5,
+                value=3,
+                key="num_personas_slider"
+            )
+            st.info(f"System will automatically select {num_personas} personas based on paper content" + (f" and paper type ({paper_type})" if paper_type else ""))
+
+            # For this mode, we'll need to update the engine to support persona count
+            # For now, we'll use manual_personas with None values to signal count-based selection
+            # This requires additional engine updates - for now default to auto
+            st.warning("⚠️ Count-based selection will default to automatic 3-persona selection. Full count control coming soon.")
+
+        elif persona_mode == "🎯 Manual Selection (You choose personas, system assigns weights)":
+            st.markdown("**Select 2-5 personas to evaluate your paper:**")
+            available_personas = ["Theorist", "Empiricist", "Historian", "Visionary", "Policymaker"]
+
+            cols = st.columns(5)
+            selected_personas_list = []
+
+            for idx, persona in enumerate(available_personas):
+                with cols[idx]:
+                    if st.checkbox(persona, key=f"persona_check_{persona}"):
+                        selected_personas_list.append(persona)
+
+            if len(selected_personas_list) < 2:
+                st.warning("⚠️ Please select at least 2 personas")
+            elif len(selected_personas_list) > 5:
+                st.error("❌ Maximum 5 personas allowed")
+            else:
+                manual_personas = selected_personas_list
+                st.success(f"✅ Selected {len(manual_personas)} personas: {', '.join(manual_personas)}")
+                st.info("The system will automatically assign importance weights to these personas based on the paper content" + (f" and paper type ({paper_type})" if paper_type else ""))
+
+        elif persona_mode == "⚙️ Full Manual (You choose personas AND weights)":
+            st.markdown("**Select 2-5 personas and assign their weights:**")
+            available_personas = ["Theorist", "Empiricist", "Historian", "Visionary", "Policymaker"]
+
+            st.info("💡 Weights must sum to 1.0. Higher weight = more influence on final decision")
+
+            selected_personas_dict = {}
+            cols_check = st.columns(5)
+            selected_for_weight = []
+
+            # First row: checkboxes
+            for idx, persona in enumerate(available_personas):
+                with cols_check[idx]:
+                    if st.checkbox(persona, key=f"persona_check_manual_{persona}"):
+                        selected_for_weight.append(persona)
+
+            if len(selected_for_weight) < 2:
+                st.warning("⚠️ Please select at least 2 personas")
+            elif len(selected_for_weight) > 5:
+                st.error("❌ Maximum 5 personas allowed")
+            else:
+                # Second section: weight sliders
+                st.markdown("**Assign weights (must sum to 1.0):**")
+                cols_weight = st.columns(len(selected_for_weight))
+
+                temp_weights = {}
+                for idx, persona in enumerate(selected_for_weight):
+                    with cols_weight[idx]:
+                        default_weight = 1.0 / len(selected_for_weight)
+                        weight = st.number_input(
+                            persona,
+                            min_value=0.0,
+                            max_value=1.0,
+                            value=default_weight,
+                            step=0.05,
+                            key=f"weight_{persona}"
+                        )
+                        temp_weights[persona] = weight
+
+                weight_sum = sum(temp_weights.values())
+                st.metric("Weight Sum", f"{weight_sum:.2f}", delta=f"{weight_sum - 1.0:.2f}" if abs(weight_sum - 1.0) > 0.01 else "✓")
+
+                if abs(weight_sum - 1.0) < 0.01:  # Allow small floating point errors
+                    manual_personas = selected_for_weight
+                    manual_weights = temp_weights
+                    st.success(f"✅ Weights configured: {', '.join([f'{p} ({w:.2f})' for p, w in manual_weights.items()])}")
+                else:
+                    st.error(f"❌ Weights must sum to 1.0 (current sum: {weight_sum:.2f})")
+
+        else:  # Fully Automatic
+            st.info("🤖 The system will automatically select 3 personas and assign weights based on paper content" + (f" and paper type ({paper_type})" if paper_type else ""))
+
+        st.markdown("---")
+
+        # Session state keys for this workflow
+        extraction_key = f"referee_extraction_done_{manuscript_file}"
+        fixes_key = f"referee_fixes_applied_{manuscript_file}"
+        text_key = f"referee_text_{manuscript_file}"
+        fixed_text_key = f"referee_fixed_text_{manuscript_file}"
+
+        # Check workflow state
+        extraction_done = st.session_state.get(extraction_key, False)
+        fixes_applied = st.session_state.get(fixes_key, False)
+
+        # Stage 1: Initial button to extract text
+        if not extraction_done:
+            st.info("👉 **Next Step**: Extract text from your PDF and review equations/tables before running the debate")
+            if st.button("🚀 Step 1: Extract & Review Text", type="primary", use_container_width=True):
+                if not manuscript_file:
+                    st.error("Please select a manuscript file.")
+                    return
+
+                with st.spinner("Extracting text from manuscript..."):
+                    # Extract text from manuscript
+                    paper_text = self.extract_text_from_pdf(files[manuscript_file])
+                    st.session_state[text_key] = paper_text
+                    st.session_state[extraction_key] = True
+                    st.success("✅ Text extracted! Review equations/tables below.")
+                    st.rerun()
+
+        # Stage 2: Show equation fixer UI (after extraction, before fixes applied)
+        if extraction_done and not fixes_applied:
+            paper_text = st.session_state.get(text_key, "")
+
+            # Workflow progress indicator
+            st.markdown("### 📍 Two-Stage Workflow")
+            col_stage1, col_arrow, col_stage2 = st.columns([1, 0.2, 1])
+
+            with col_stage1:
+                st.markdown(
+                    '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                    'color: white; padding: 15px; border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 1: Fix Equations & Tables</strong><br/>'
+                    '<span style="font-size: 12px;">Currently here ✓</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            with col_arrow:
+                st.markdown('<div style="text-align: center; font-size: 30px;">→</div>', unsafe_allow_html=True)
+
+            with col_stage2:
+                st.markdown(
+                    '<div style="background: #e0e0e0; color: #666; padding: 15px; '
+                    'border-radius: 10px; text-align: center; border: 2px dashed #999;">'
+                    '<strong>STAGE 2: Run Multi-Agent Debate</strong><br/>'
+                    '<span style="font-size: 12px;">After fixing</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            st.markdown("---")
+            st.markdown("### 🔍 Extraction Quality Check")
+
+            # Render the region fixer
+            render_region_fixer(
+                text=paper_text,
+                manuscript_name=manuscript_file,
+                cache_prefix="referee",
+                llm_query_fn=single_query,
+                min_confidence=0.5
+            )
+
+            # Don't proceed until fixes are applied
+            return
+
+        # Stage 3: Run the debate (after fixes applied)
+        if extraction_done and fixes_applied:
+            # Get the fixed text
+            paper_text = st.session_state.get(fixed_text_key, st.session_state.get(text_key, ""))
+
+            # Workflow progress indicator for stage 2
+            st.markdown("### 📍 Two-Stage Workflow")
+            col_stage1, col_arrow, col_stage2 = st.columns([1, 0.2, 1])
+
+            with col_stage1:
+                st.markdown(
+                    '<div style="background: #4caf50; color: white; padding: 15px; '
+                    'border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 1: Fix Equations & Tables</strong><br/>'
+                    '<span style="font-size: 12px;">✓ Complete</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            with col_arrow:
+                st.markdown('<div style="text-align: center; font-size: 30px;">→</div>', unsafe_allow_html=True)
+
+            with col_stage2:
+                st.markdown(
+                    '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                    'color: white; padding: 15px; border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 2: Run Multi-Agent Debate</strong><br/>'
+                    '<span style="font-size: 12px;">Ready to run ✓</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            st.markdown("---")
+
+            col_run, col_reset = st.columns([3, 1])
+
+            with col_run:
+                run_debate = st.button("🚀 Step 2: Run Multi-Agent Evaluation", type="primary", use_container_width=True)
+
+            with col_reset:
+                if st.button("🔄 Start Over", use_container_width=True):
+                    # Clear all session state for this manuscript
+                    st.session_state.pop(extraction_key, None)
+                    st.session_state.pop(fixes_key, None)
+                    st.session_state.pop(text_key, None)
+                    st.session_state.pop(fixed_text_key, None)
+                    st.session_state.pop(f"referee_region_fixes_{manuscript_file}", None)
+                    st.info("Workflow reset. Click 'Step 1' to start over.")
+                    st.rerun()
+
+            if run_debate:
+                # Run the multi-agent debate
+                try:
+                    # Create progress tracking
+                    progress_placeholder = st.empty()
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+
+                    def update_progress(stage, progress):
+                        status_text.text(f"🔄 {stage}")
+                        progress_bar.progress(progress)
+
+                    # Execute debate pipeline with enhanced context
+                    with st.spinner("Running multi-agent debate..."):
+                        debate_results = asyncio.run(
+                            execute_debate_pipeline(
+                                paper_text,
+                                progress_callback=update_progress,
+                                paper_type=paper_type,
+                                custom_context=custom_context if custom_context and custom_context.strip() else None,
+                                manual_personas=manual_personas,
+                                manual_weights=manual_weights
+                            )
+                        )
+
+                    # Run summarization pass (optional)
+                    if use_summarizer:
+                        with st.spinner("Compressing outputs for display (additional LLM pass)..."):
+                            summaries = asyncio.run(summarize_all_rounds(debate_results))
+                    else:
+                        # Skip summarization - use empty summaries dict
+                        summaries = {
+                            'round_1_summaries': {},
+                            'round_2a_summaries': {},
+                            'round_2b_summaries': {},
+                            'round_2c_summaries': {},
+                            'editor_summary': None
+                        }
+                        st.info("⚡ Skipped summarization - showing full outputs only")
+
+                    # Store results in session state
+                    st.session_state.debate_results = debate_results
+                    st.session_state.debate_summaries = summaries
+                    st.session_state.manuscript_file = manuscript_file  # Store filename for downloads
+                    st.session_state.use_summarizer = use_summarizer  # Store for display
+
+                    # Clear progress indicators
+                    progress_bar.empty()
+                    status_text.empty()
+
+                    # Display results
+                    self.display_debate_results(debate_results, summaries)
+
+                except Exception as e:
+                    st.error(f"Error during multi-agent evaluation: {e}")
+                    st.exception(e)
 
 
     def extract_text_from_pdf(self, file_content):
-        """Extract text from a PDF file."""
+        """
+        Extract text and tables from a PDF file.
+
+        Returns:
+            str: Extracted text with tables formatted as markdown
+        """
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_file:
             temp_file.write(file_content)
             temp_file.flush()
 
             text = ""
+            total_tables = 0
+            total_chars = 0
+
             try:
                 with pdfplumber.open(temp_file.name) as pdf:
-                    for page in pdf.pages:
-                        text += page.extract_text() or ""
+                    for page_num, page in enumerate(pdf.pages, 1):
+                        # Extract text from page
+                        page_text = page.extract_text() or ""
+                        text += page_text
+
+                        # Extract tables from page
+                        tables = page.extract_tables()
+                        if tables:
+                            for table_num, table in enumerate(tables, 1):
+                                total_tables += 1
+                                text += f"\n\n[TABLE {total_tables} - Page {page_num}]\n"
+                                text += self._format_table_as_markdown(table)
+                                text += "\n[END TABLE]\n\n"
+
+                        # Add page break marker
+                        text += f"\n\n--- PAGE {page_num} ---\n\n"
+
+                    total_chars = len(text)
+
+                    # Display extraction diagnostics
+                    st.success(f"✅ **PDF Extraction Complete**")
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Pages", len(pdf.pages))
+                    with col2:
+                        st.metric("Tables Extracted", total_tables)
+                    with col3:
+                        st.metric("Characters", f"{total_chars:,}")
+
+                    if total_tables == 0:
+                        st.warning("⚠️ No tables detected. If this paper contains tables, "
+                                 "consider using LaTeX source instead for better extraction.")
+
             except Exception as e:
                 st.error(f"Error extracting text from PDF: {e}")
 
             # Clean up
             os.unlink(temp_file.name)
             return text
+
+    def _format_table_as_markdown(self, table):
+        """
+        Format an extracted table as markdown.
+
+        Args:
+            table: List of lists representing table rows
+
+        Returns:
+            str: Markdown-formatted table
+        """
+        if not table or not any(table):
+            return "[Empty table]"
+
+        markdown = ""
+
+        # Process table rows
+        for i, row in enumerate(table):
+            if row is None:
+                continue
+
+            # Clean cells (handle None values)
+            cells = [str(cell).strip() if cell is not None else "" for cell in row]
+
+            # Create markdown row
+            markdown += "| " + " | ".join(cells) + " |\n"
+
+            # Add header separator after first row
+            if i == 0:
+                markdown += "|" + "|".join(["---" for _ in cells]) + "|\n"
+
+        return markdown
 
     def create_excel_export(self, results: Dict) -> BytesIO:
         """
@@ -315,12 +671,78 @@ The system operates in **5 sequential rounds**:
         }
         consensus_df = pd.DataFrame(consensus_data)
 
+        # Create cost tracking sheet
+        token_usage = metadata.get('token_usage', {})
+        cost_data = {
+            'Metric': [],
+            'Value': []
+        }
+
+        if token_usage:
+            cost_usd = token_usage.get('cost_usd', {})
+            llm_calls = token_usage.get('llm_calls', {})
+            input_tokens = token_usage.get('input_tokens', {})
+            output_tokens = token_usage.get('output_tokens', {})
+            pricing = token_usage.get('pricing', {})
+
+            cost_data['Metric'].extend([
+                'Paper Tokens',
+                'Input Tokens (Debate)',
+                'Input Tokens (Summarization)',
+                'Total Input Tokens',
+                'Output Tokens (Debate)',
+                'Output Tokens (Summarization)',
+                'Total Output Tokens',
+                'Total Tokens',
+                '',
+                'Input Cost (USD)',
+                'Output Cost (USD)',
+                'Total Cost (USD)',
+                '',
+                'LLM Calls (Debate)',
+                'LLM Calls (Summarization)',
+                'Total LLM Calls',
+                '',
+                'Model',
+                'Input Price (per 1M tokens)',
+                'Output Price (per 1M tokens)'
+            ])
+
+            cost_data['Value'].extend([
+                token_usage.get('paper_tokens', 0),
+                input_tokens.get('debate', 0),
+                input_tokens.get('summarization', 0),
+                input_tokens.get('total', 0),
+                output_tokens.get('debate', 0),
+                output_tokens.get('summarization', 0),
+                output_tokens.get('total', 0),
+                token_usage.get('total_tokens', 0),
+                '',
+                f"${cost_usd.get('input', 0):.4f}",
+                f"${cost_usd.get('output', 0):.4f}",
+                f"${cost_usd.get('total', 0):.4f}",
+                '',
+                llm_calls.get('debate', 0),
+                llm_calls.get('summarization', 0),
+                llm_calls.get('total', 0),
+                '',
+                pricing.get('model', 'N/A'),
+                f"${pricing.get('input_per_million', 0):.2f}",
+                f"${pricing.get('output_per_million', 0):.2f}"
+            ])
+
+        cost_df = pd.DataFrame(cost_data)
+
         # Write to Excel
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             config_df.to_excel(writer, sheet_name='Configuration', index=False)
             results_df.to_excel(writer, sheet_name='Results', index=False)
             consensus_df.to_excel(writer, sheet_name='Consensus', index=False)
+            if not cost_data['Metric']:  # Only add if we have cost data
+                cost_df.to_excel(writer, sheet_name='Cost Tracking', index=False)
+            else:
+                cost_df.to_excel(writer, sheet_name='Cost Tracking', index=False)
 
             # Auto-adjust column widths
             for sheet_name in writer.sheets:
@@ -341,8 +763,25 @@ The system operates in **5 sequential rounds**:
         return output
 
     def display_debate_results(self, results: Dict, summaries: Dict):
-        """Display the multi-agent debate results with summarized outputs."""
+        """Display the multi-agent debate results with optional summarized outputs."""
         st.success("✅ Multi-Agent Evaluation Complete!")
+
+        # Check if summarization was used
+        use_summarizer = st.session_state.get('use_summarizer', False)
+        has_summaries = summaries.get('round_1_summaries') and len(summaries.get('round_1_summaries', {})) > 0
+
+        # Display cost estimate prominently
+        metadata = results.get('metadata', {})
+        token_usage = metadata.get('token_usage', {})
+        if token_usage:
+            cost_data = token_usage.get('cost_usd', {})
+            llm_calls = token_usage.get('llm_calls', {})
+            total_cost = cost_data.get('total', 0)
+            total_calls = llm_calls.get('total', 0)
+
+            mode_text = "with summarization" if has_summaries else "full output only"
+            st.info(f"💰 **Estimated Cost:** ${total_cost:.4f} USD ({total_calls} LLM calls, "
+                   f"{token_usage.get('total_tokens', 0):,} total tokens) - {mode_text}")
 
         # Icon mapping for all personas
         icon_map = {
@@ -375,10 +814,14 @@ The system operates in **5 sequential rounds**:
 
             st.markdown("---")
 
-        # ROUND 1: Independent Evaluation (SUMMARIZED)
+        # ROUND 1: Independent Evaluation
         st.markdown('<div class="round-header">⚡ ROUND 1: INDEPENDENT EVALUATION</div>', unsafe_allow_html=True)
         st.markdown("*Each persona independently evaluates the paper with severity-weighted findings.*")
-        st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+
+        if has_summaries:
+            st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="summary-badge" style="background: #28a745;">FULL OUTPUT</span>', unsafe_allow_html=True)
 
         # System Prompt Display for Round 1
         with st.expander("🔍 **View System Prompts for Round 1**", expanded=False):
@@ -391,30 +834,45 @@ The system operates in **5 sequential rounds**:
             icon = icon_map.get(role, "🔍")
             box_class = f"{role.lower()}-box"
 
-            # Display SUMMARIZED version by default
-            summary_data = summaries['round_1_summaries'].get(role, {})
-            summary_text = summary_data.get('summary', 'No summary available')
-            verdict = summary_data.get('verdict', 'UNKNOWN')
+            if has_summaries:
+                # Display SUMMARIZED version with full in expander
+                summary_data = summaries['round_1_summaries'].get(role, {})
+                summary_text = summary_data.get('summary', 'No summary available')
+                verdict = summary_data.get('verdict', 'UNKNOWN')
 
-            with st.container():
-                st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
-                st.markdown(f"### {icon} {role.upper()}")
-                st.markdown(f"**Verdict:** {format_verdict(verdict)}", unsafe_allow_html=True)
-                st.markdown(summary_text, unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                with st.container():
+                    st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
+                    st.markdown(f"### {icon} {role.upper()}")
+                    st.markdown(f"**Verdict:** {format_verdict(verdict)}", unsafe_allow_html=True)
+                    st.markdown(summary_text, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-                # Full report in expander
-                with st.expander(f"📄 View Full {role} Report", expanded=False):
-                    raw_text = results['round_1'][role]
-                    formatted_text = format_severity_labels(raw_text)
+                    # Full report in expander
+                    with st.expander(f"📄 View Full {role} Report", expanded=False):
+                        raw_text = results['round_1'][role]
+                        formatted_text = format_severity_labels(raw_text)
+                        st.markdown(formatted_text, unsafe_allow_html=True)
+            else:
+                # Display FULL output directly
+                raw_text = results['round_1'][role]
+                formatted_text = format_severity_labels(raw_text)
+                verdict = extract_verdict(raw_text)
+
+                with st.expander(f"📄 {icon} {role.upper()} - Full Report", expanded=True):
+                    st.markdown(f"**Verdict:** {format_verdict(verdict)}", unsafe_allow_html=True)
+                    st.markdown("---")
                     st.markdown(formatted_text, unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # ROUND 2A: Cross-Examination (SUMMARIZED)
+        # ROUND 2A: Cross-Examination
         st.markdown('<div class="round-header">🔄 ROUND 2A: CROSS-EXAMINATION</div>', unsafe_allow_html=True)
         st.markdown("*Personas challenge each other's findings and ask clarifying questions.*")
-        st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+
+        if has_summaries:
+            st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="summary-badge" style="background: #28a745;">FULL OUTPUT</span>', unsafe_allow_html=True)
 
         # System Prompt Display for Round 2A
         with st.expander("🔍 **View System Prompt for Round 2A**", expanded=False):
@@ -424,56 +882,68 @@ The system operates in **5 sequential rounds**:
             icon = icon_map.get(role, "🔍")
             box_class = f"{role.lower()}-box"
 
-            # Display SUMMARIZED version
-            summary_text = summaries['round_2a_summaries'].get(role, 'No summary available')
+            if has_summaries:
+                # Display SUMMARIZED version
+                summary_text = summaries['round_2a_summaries'].get(role, 'No summary available')
 
-            with st.container():
-                st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
-                st.markdown(f"### {icon} {role.upper()} - Cross-Examination")
-                st.markdown(summary_text, unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                with st.container():
+                    st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
+                    st.markdown(f"### {icon} {role.upper()} - Cross-Examination")
+                    st.markdown(summary_text, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-                # Full report in expander
-                with st.expander(f"📄 View Full {role} Cross-Examination", expanded=False):
-                    raw_text = results['round_2a'][role]
-                    formatted_text = format_severity_labels(raw_text)
+                    # Full report in expander
+                    with st.expander(f"📄 View Full {role} Cross-Examination", expanded=False):
+                        raw_text = results['round_2a'][role]
+                        formatted_text = format_severity_labels(raw_text)
 
-                    # Parse and display structured sections
-                    insights_pattern = r'\*\*Cross-Domain Insights[:\*]*\s*(.*?)(?=\*\*Constructive Pushback|\*\*Clarification Requests|\Z)'
-                    insights_match = re.search(insights_pattern, formatted_text, re.DOTALL | re.IGNORECASE)
+                        # Parse and display structured sections
+                        insights_pattern = r'\*\*Cross-Domain Insights[:\*]*\s*(.*?)(?=\*\*Constructive Pushback|\*\*Clarification Requests|\Z)'
+                        insights_match = re.search(insights_pattern, formatted_text, re.DOTALL | re.IGNORECASE)
 
-                    if insights_match:
-                        st.markdown("**Cross-Domain Insights:**")
-                        insights_text = insights_match.group(1).strip()
-                        st.markdown(insights_text, unsafe_allow_html=True)
-                        st.markdown("")
+                        if insights_match:
+                            st.markdown("**Cross-Domain Insights:**")
+                            insights_text = insights_match.group(1).strip()
+                            st.markdown(insights_text, unsafe_allow_html=True)
+                            st.markdown("")
 
-                    pushback_pattern = r'\*\*Constructive Pushback[:\*]*\s*(.*?)(?=\*\*Clarification Requests|\Z)'
-                    pushback_match = re.search(pushback_pattern, formatted_text, re.DOTALL | re.IGNORECASE)
+                        pushback_pattern = r'\*\*Constructive Pushback[:\*]*\s*(.*?)(?=\*\*Clarification Requests|\Z)'
+                        pushback_match = re.search(pushback_pattern, formatted_text, re.DOTALL | re.IGNORECASE)
 
-                    if pushback_match:
-                        st.markdown("**Constructive Pushback:**")
-                        pushback_text = pushback_match.group(1).strip()
-                        st.markdown(pushback_text, unsafe_allow_html=True)
-                        st.markdown("")
+                        if pushback_match:
+                            st.markdown("**Constructive Pushback:**")
+                            pushback_text = pushback_match.group(1).strip()
+                            st.markdown(pushback_text, unsafe_allow_html=True)
+                            st.markdown("")
 
-                    clarification_pattern = r'\*\*Clarification Requests[:\*]*\s*(.*?)(?=\Z)'
-                    clarification_match = re.search(clarification_pattern, formatted_text, re.DOTALL | re.IGNORECASE)
+                        clarification_pattern = r'\*\*Clarification Requests[:\*]*\s*(.*?)(?=\Z)'
+                        clarification_match = re.search(clarification_pattern, formatted_text, re.DOTALL | re.IGNORECASE)
 
-                    if clarification_match:
-                        st.markdown("**Clarification Requests:**")
-                        clarification_text = clarification_match.group(1).strip()
-                        st.markdown(clarification_text, unsafe_allow_html=True)
+                        if clarification_match:
+                            st.markdown("**Clarification Requests:**")
+                            clarification_text = clarification_match.group(1).strip()
+                            st.markdown(clarification_text, unsafe_allow_html=True)
 
-                    if not (insights_match or pushback_match or clarification_match):
-                        st.markdown(formatted_text, unsafe_allow_html=True)
+                        if not (insights_match or pushback_match or clarification_match):
+                            st.markdown(formatted_text, unsafe_allow_html=True)
+            else:
+                # Display FULL output directly
+                raw_text = results['round_2a'][role]
+                formatted_text = format_severity_labels(raw_text)
+
+                with st.expander(f"📄 {icon} {role.upper()} - Cross-Examination (Full)", expanded=True):
+                    st.markdown(formatted_text, unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # ROUND 2B: Direct Examination (SUMMARIZED)
+        # ROUND 2B: Direct Examination
         st.markdown('<div class="round-header">💬 ROUND 2B: ANSWERING QUESTIONS</div>', unsafe_allow_html=True)
         st.markdown("*Personas respond to peer questions with evidence and concessions/defenses.*")
-        st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+
+        if has_summaries:
+            st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="summary-badge" style="background: #28a745;">FULL OUTPUT</span>', unsafe_allow_html=True)
 
         # System Prompt Display for Round 2B
         with st.expander("🔍 **View System Prompt for Round 2B**", expanded=False):
@@ -483,70 +953,95 @@ The system operates in **5 sequential rounds**:
             icon = icon_map.get(role, "🔍")
             box_class = f"{role.lower()}-box"
 
-            # Display SUMMARIZED version
-            summary_text = summaries['round_2b_summaries'].get(role, 'No summary available')
+            if has_summaries:
+                # Display SUMMARIZED version
+                summary_text = summaries['round_2b_summaries'].get(role, 'No summary available')
 
-            with st.container():
-                st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
-                st.markdown(f"### {icon} {role.upper()} - Responses")
-                st.markdown(summary_text, unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                with st.container():
+                    st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
+                    st.markdown(f"### {icon} {role.upper()} - Responses")
+                    st.markdown(summary_text, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-                # Full report in expander
-                with st.expander(f"📄 View Full {role} Responses", expanded=False):
-                    raw_text = results['round_2b'][role]
-                    peers = [p for p in active_personas if p != role]
+                    # Full report in expander
+                    with st.expander(f"📄 View Full {role} Responses", expanded=False):
+                        raw_text = results['round_2b'][role]
+                        peers = [p for p in active_personas if p != role]
 
-                    for peer in peers:
-                        pattern = rf'\*\*Response to {peer}[:\*]*\s*(.*?)(?=\*\*Response to |\*\*Concession or Defense|\Z)'
+                        for peer in peers:
+                            pattern = rf'\*\*Response to {peer}[:\*]*\s*(.*?)(?=\*\*Response to |\*\*Concession or Defense|\Z)'
+                            match = re.search(pattern, raw_text, re.DOTALL | re.IGNORECASE)
+
+                            if match:
+                                response_content = match.group(1).strip()
+                                st.markdown(f"**Response to {peer}:**")
+                                st.markdown(response_content)
+                                st.markdown("---")
+
+                        # General concession or defense section
+                        pattern = r'\*\*Concession or Defense[:\*]*\s*(.*?)(?=\Z)'
                         match = re.search(pattern, raw_text, re.DOTALL | re.IGNORECASE)
-
                         if match:
-                            response_content = match.group(1).strip()
-                            st.markdown(f"**Response to {peer}:**")
-                            st.markdown(response_content)
-                            st.markdown("---")
+                            content = match.group(1).strip()
+                            st.markdown(f"**Overall Position:**")
+                            st.markdown(content)
+            else:
+                # Display FULL output directly
+                raw_text = results['round_2b'][role]
+                formatted_text = format_severity_labels(raw_text)
 
-                    # General concession or defense section
-                    pattern = r'\*\*Concession or Defense[:\*]*\s*(.*?)(?=\Z)'
-                    match = re.search(pattern, raw_text, re.DOTALL | re.IGNORECASE)
-                    if match:
-                        content = match.group(1).strip()
-                        st.markdown(f"**Overall Position:**")
-                        st.markdown(content)
+                with st.expander(f"📄 {icon} {role.upper()} - Responses (Full)", expanded=True):
+                    st.markdown(formatted_text, unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # ROUND 2C: Final Amendments (SUMMARIZED)
+        # ROUND 2C: Final Amendments
         st.markdown('<div class="round-header">⚖️ ROUND 2C: FINAL AMENDMENTS</div>', unsafe_allow_html=True)
         st.markdown("*Personas submit final verdicts after integrating full debate.*")
-        st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+
+        if has_summaries:
+            st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="summary-badge" style="background: #28a745;">FULL OUTPUT</span>', unsafe_allow_html=True)
 
         # System Prompt Display for Round 2C
         with st.expander("🔍 **View System Prompt for Round 2C**", expanded=False):
             st.code(DEBATE_PROMPTS["Round_2C_Final_Amendment"], language="text")
 
-        cols = st.columns(3)
-        for idx, role in enumerate(active_personas):
-            icon = icon_map.get(role, "🔍")
-            box_class = f"{role.lower()}-box"
+        if has_summaries:
+            cols = st.columns(3)
+            for idx, role in enumerate(active_personas):
+                icon = icon_map.get(role, "🔍")
+                box_class = f"{role.lower()}-box"
 
-            # Display SUMMARIZED version
-            summary_data = summaries['round_2c_summaries'].get(role, {})
-            summary_text = summary_data.get('summary', 'No summary available')
-            verdict = summary_data.get('verdict', 'UNKNOWN')
+                # Display SUMMARIZED version
+                summary_data = summaries['round_2c_summaries'].get(role, {})
+                summary_text = summary_data.get('summary', 'No summary available')
+                verdict = summary_data.get('verdict', 'UNKNOWN')
 
-            with cols[idx]:
-                st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
-                st.markdown(f"### {icon} {role.upper()}")
-                st.markdown(f"**Final Verdict:** {format_verdict(verdict)}", unsafe_allow_html=True)
-                st.markdown(summary_text, unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                with cols[idx]:
+                    st.markdown(f'<div class="persona-box {box_class}">', unsafe_allow_html=True)
+                    st.markdown(f"### {icon} {role.upper()}")
+                    st.markdown(f"**Final Verdict:** {format_verdict(verdict)}", unsafe_allow_html=True)
+                    st.markdown(summary_text, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-                # Full report in expander
-                with st.expander(f"📄 Full Report", expanded=False):
-                    raw_text = results['round_2c'][role]
-                    formatted_text = format_severity_labels(raw_text)
+                    # Full report in expander
+                    with st.expander(f"📄 Full Report", expanded=False):
+                        raw_text = results['round_2c'][role]
+                        formatted_text = format_severity_labels(raw_text)
+                        st.markdown(formatted_text, unsafe_allow_html=True)
+        else:
+            # Display FULL output directly
+            for role in active_personas:
+                icon = icon_map.get(role, "🔍")
+                raw_text = results['round_2c'][role]
+                formatted_text = format_severity_labels(raw_text)
+                verdict = extract_verdict(raw_text)
+
+                with st.expander(f"📄 {icon} {role.upper()} - Final Amendment (Full)", expanded=True):
+                    st.markdown(f"**Final Verdict:** {format_verdict(verdict)}", unsafe_allow_html=True)
+                    st.markdown("---")
                     st.markdown(formatted_text, unsafe_allow_html=True)
 
         st.markdown("---")
@@ -590,25 +1085,38 @@ Score < 0.40: REJECT""", language="text")
 
             st.markdown("---")
 
-        # Editor Report (SUMMARIZED)
-        st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+        # Editor Report
+        if has_summaries:
+            st.markdown('<span class="summary-badge">SUMMARIZED VIEW</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="summary-badge" style="background: #28a745;">FULL OUTPUT</span>', unsafe_allow_html=True)
 
         final_decision = results.get('consensus', {}).get('decision', 'UNKNOWN')
-        editor_summary = summaries.get('editor_summary', 'No summary available')
 
-        st.markdown(f"""
-        <div class="persona-box editor-box">
-        <h3>🏛️ Senior Editor's Report</h3>
-        <div style="text-align: center; margin: 20px 0;">
-        {format_final_verdict(final_decision)}
-        </div>
-        <p style="text-align: center; color: #666; font-size: 14px;">
-        (Decision computed deterministically from weighted consensus)
-        </p>
-        """, unsafe_allow_html=True)
+        if has_summaries:
+            editor_summary = summaries.get('editor_summary', 'No summary available')
 
-        st.markdown(editor_summary, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="persona-box editor-box">
+            <h3>🏛️ Senior Editor's Report</h3>
+            <div style="text-align: center; margin: 20px 0;">
+            {format_final_verdict(final_decision)}
+            </div>
+            <p style="text-align: center; color: #666; font-size: 14px;">
+            (Decision computed deterministically from weighted consensus)
+            </p>
+            """, unsafe_allow_html=True)
+
+            st.markdown(editor_summary, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            # Display full editor report
+            with st.expander("📄 🏛️ Senior Editor's Full Report", expanded=True):
+                st.markdown(f"**Decision:** {format_final_verdict(final_decision)}", unsafe_allow_html=True)
+                st.markdown("---")
+                editor_text = results.get('final_decision', 'No editor report available')
+                formatted_editor = format_severity_labels(editor_text)
+                st.markdown(formatted_editor, unsafe_allow_html=True)
 
         # Full editor report in expander
         with st.expander("📄 View Full Editor Report", expanded=False):
@@ -690,6 +1198,47 @@ Retry Delay: {metadata.get('retry_delay_seconds', 'N/A')}s""", language="text")
 End Time: {metadata.get('end_time', 'N/A')}
 Total Runtime: {metadata.get('total_runtime_formatted', 'N/A')}
 ({metadata.get('total_runtime_seconds', 'N/A')} seconds)""", language="text")
+
+            # Cost and Token Usage
+            if 'token_usage' in metadata:
+                st.markdown("---")
+                st.subheader("💰 Cost & Token Usage")
+
+                token_data = metadata['token_usage']
+                cost_data = token_data.get('cost_usd', {})
+                llm_calls = token_data.get('llm_calls', {})
+
+                col3, col4 = st.columns(2)
+
+                with col3:
+                    st.markdown("**Token Breakdown:**")
+                    st.code(f"""Paper Tokens: {token_data.get('paper_tokens', 0):,}
+Input Tokens (Debate): {token_data.get('input_tokens', {}).get('debate', 0):,}
+Input Tokens (Summarization): {token_data.get('input_tokens', {}).get('summarization', 0):,}
+Total Input: {token_data.get('input_tokens', {}).get('total', 0):,}
+
+Output Tokens (Debate): {token_data.get('output_tokens', {}).get('debate', 0):,}
+Output Tokens (Summarization): {token_data.get('output_tokens', {}).get('summarization', 0):,}
+Total Output: {token_data.get('output_tokens', {}).get('total', 0):,}
+
+TOTAL TOKENS: {token_data.get('total_tokens', 0):,}""", language="text")
+
+                with col4:
+                    st.markdown("**Cost Breakdown:**")
+                    pricing = token_data.get('pricing', {})
+                    st.code(f"""Model: {pricing.get('model', 'N/A')}
+Pricing:
+  Input: ${pricing.get('input_per_million', 0)}/1M tokens
+  Output: ${pricing.get('output_per_million', 0)}/1M tokens
+
+Input Cost: ${cost_data.get('input', 0):.4f}
+Output Cost: ${cost_data.get('output', 0):.4f}
+TOTAL COST: ${cost_data.get('total', 0):.4f}
+
+LLM Calls:
+  Debate: {llm_calls.get('debate', 0)}
+  Summarization: {llm_calls.get('summarization', 0)}
+  Total: {llm_calls.get('total', 0)}""", language="text")
 
         # Download options
         st.markdown("---")
@@ -829,3 +1378,42 @@ Generated: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 help="Download structured Excel file with configurations, prompt versions, and verdicts for experiment comparison"
             )
+
+        # --- Add comprehensive ZIP download ---
+        st.markdown("---")
+        st.markdown("### 📦 Download All Files")
+
+        # Extract paper name from session state manuscript_file (remove extension)
+        manuscript_file = st.session_state.get('manuscript_file', 'paper')
+        paper_name = manuscript_file.rsplit('.', 1)[0] if '.' in manuscript_file else manuscript_file
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        # Create ZIP file in memory
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Add full evaluation report
+            zip_file.writestr(
+                f"{paper_name}_{timestamp}_full_report.md",
+                full_report
+            )
+            # Add summary table
+            zip_file.writestr(
+                f"{paper_name}_{timestamp}_summary.md",
+                summary_md
+            )
+            # Add Excel file (excel_data is BytesIO, need to get bytes)
+            zip_file.writestr(
+                f"{paper_name}_{timestamp}_experiment_tracking.xlsx",
+                excel_data.getvalue()  # Get bytes from BytesIO object
+            )
+
+        zip_buffer.seek(0)
+
+        st.download_button(
+            label="📦 Download All Files (ZIP)",
+            data=zip_buffer.getvalue(),
+            file_name=f"{paper_name}_{timestamp}_complete_evaluation.zip",
+            mime="application/zip",
+            help="Download all 3 files in a single ZIP archive",
+            type="primary"
+        )

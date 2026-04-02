@@ -2,6 +2,24 @@
 
 This directory contains all files needed to run the Streamlit evaluation apps.
 
+## Key Features
+
+### Referee Report System
+- **Dual output modes**: Choose between full output (14 calls) or with LLM summarization (+10-15 calls)
+- **Automatic cost tracking**: Real-time token usage and cost estimation
+- **Enhanced PDF extraction**: Automatic table extraction formatted as markdown
+- **Configurable personas**: 5 specialized AI reviewers (3 selected per paper)
+- **Weighted consensus**: Mathematical aggregation of persona verdicts
+
+### Section Evaluator
+- **Auto-detection**: Two-pass section detection (heuristic + LLM)
+- **Paper-type-specific criteria**: Customized evaluation for empirical/theoretical/policy papers
+- **Fatal-flaw scoring**: Critical criteria cap section scores at 2.5 if ≤ 1.5
+- **Multi-format export**: Markdown, PDF, and CSV (for benchmarking)
+- **Quote validation**: Verifies all LLM quotes exist in source text
+
+---
+
 ## Quick Setup
 
 ### 1. Configure API Credentials
@@ -137,8 +155,9 @@ streamlit run demos/app_summarized_only.py   # Summarized-only version
 app.py (Tab: "Referee Report")
   └─ referee/workflow.py (RefereeWorkflow)
        └─ referee/engine.py (execute_debate_pipeline)
-            ├─ utils.py (single_query - stateless LLM calls)
-            └─ referee/_utils/summarizer.py (LLM summarization)
+            ├─ utils.py (single_query, count_tokens - stateless LLM calls)
+            ├─ referee/_utils/summarizer.py (optional LLM summarization)
+            └─ calculate_token_usage_and_cost() (automatic cost estimation)
 ```
 
 ### Section Evaluator Flow:
@@ -172,6 +191,27 @@ See `.env.example` for configuration templates for different API providers.
 - **Referee debate**: Temperature 1.0 (with thinking mode enabled)
 - **Section evaluator**: Temperature 0.3 (more conservative for scoring)
 
+### Referee Output Modes:
+The referee system supports two output modes (configurable via UI checkbox):
+
+1. **Full Output Only** (default)
+   - 14 API calls total (1 selection + 12 persona rounds + 1 editor)
+   - Most cost-efficient option
+   - Shows complete debate outputs in expandable sections
+
+2. **With LLM Summarization**
+   - 24-29 total API calls (14 debate + 10-15 summarization)
+   - Cleaner display with executive summaries
+   - Full outputs still available in expandable sections
+   - Adds ~10-15 compression calls via `summarize_all_rounds()`
+
+### Token Usage and Cost Tracking:
+The referee system automatically calculates and displays:
+- Input/output token counts (separate for debate vs summarization)
+- Number of LLM API calls
+- Estimated cost in USD (based on Claude 3.7 Sonnet pricing: $3/M input, $15/M output)
+- Breakdown by round and persona
+
 ## Notes
 
 ### Import Path Requirements
@@ -187,6 +227,12 @@ See `.env.example` for configuration templates for different API providers.
 - **`single_query()`** (in `utils.py`): Stateless calls used by the MAD system. Uses `model_selection3` (Claude 3.7 Sonnet) at temperature 1.0 with thinking mode enabled.
 - **`safe_query()`** (in `section_eval/utils.py`): Direct API calls used by section evaluator. Uses `model_selection` (Claude Sonnet 4.5) at temperature 0.3, bypasses ConversationManager.
 - **`ConversationManager.conv_query()`**: Stateful conversation management with automatic pruning when tokens exceed 8000.
+
+### PDF Processing
+- **Table extraction**: Referee workflow's `extract_text_from_pdf()` automatically extracts tables and formats them as markdown
+- **Encoding**: Tables use pipe-delimited markdown format (e.g., `| Header 1 | Header 2 |`)
+- **Page tracking**: Displays total pages, tables extracted, and character count
+- **Token estimation**: Uses `count_tokens()` to estimate token usage before API calls
 
 ### Documentation
 - Architecture and framework docs live in `app_system/docs/`

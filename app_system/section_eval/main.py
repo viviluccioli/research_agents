@@ -19,6 +19,8 @@ from .hierarchy import group_subsections
 from .evaluator import SectionEvaluator
 from .scoring import compute_overall_score, score_bar_html
 from .criteria.base import PAPER_TYPES, PAPER_TYPE_LABELS, SECTION_DEFAULTS
+from .region_fixer import render_region_fixer
+from utils import single_query
 
 
 # ---------------------------------------------------------------------------
@@ -51,12 +53,10 @@ class SectionEvaluatorApp:
         st.subheader("Section-by-Section Manuscript Evaluation")
         st.write("Evaluate economics paper sections with paper-type-specific criteria, weighted scoring, and quote-backed assessments.")
 
-        # --- Step 0: Paper type selection ---
-        self._render_paper_type_selector()
-
-        paper_type = st.session_state.get(f"{self.CACHE_PREFIX}_paper_type")
+        # --- Get paper type from global session state (set in app.py) ---
+        paper_type = st.session_state.get("paper_type")
         if not paper_type:
-            st.info("Select a paper type above to begin.")
+            st.warning("⚠️ Please select a paper type above to begin evaluation.")
             return
 
         # --- Step 1b: Figures/tables location ---
@@ -133,14 +133,107 @@ class SectionEvaluatorApp:
         if st.button("Scan for Sections", key=f"{self.CACHE_PREFIX}_scan_{manuscript}"):
             with st.spinner("Extracting text..."):
                 paper_text = decode_file(manuscript, files[manuscript], warn_fn=st.warning)
-            with st.spinner("Detecting section headers..."):
-                detected = detect_sections(paper_text, self.llm)
-            st.session_state[scan_state_key] = detected
             st.session_state[text_state_key] = paper_text
-            # Clear stale preview and hierarchy caches from any previous scan
-            st.session_state.pop(f"{self.CACHE_PREFIX}_preview_{manuscript}", None)
-            st.session_state.pop(f"{self.CACHE_PREFIX}_hierarchy_{manuscript}", None)
-            st.success(f"Found {len(detected)} section(s).")
+            st.session_state[f"{self.CACHE_PREFIX}_extraction_done_{manuscript}"] = True
+            # Clear ALL previous state for this manuscript to start fresh
+            st.session_state.pop(f"{self.CACHE_PREFIX}_fixes_applied_{manuscript}", None)
+            st.session_state.pop(f"{self.CACHE_PREFIX}_region_fixes_{manuscript}", None)
+            st.session_state.pop(f"{self.CACHE_PREFIX}_fixed_text_{manuscript}", None)
+            st.session_state.pop(scan_state_key, None)  # Clear old section detection
+            st.success("✅ Text extracted!")
+            st.rerun()
+
+        # --- Phase 1.5: Region Fixing UI ---
+        extraction_done = st.session_state.get(f"{self.CACHE_PREFIX}_extraction_done_{manuscript}")
+        fixes_applied = st.session_state.get(f"{self.CACHE_PREFIX}_fixes_applied_{manuscript}")
+
+        if extraction_done and not fixes_applied:
+            paper_text = st.session_state.get(text_state_key, "")
+
+            # Workflow progress indicator
+            st.markdown("### 📍 Two-Stage Workflow")
+            col_stage1, col_arrow, col_stage2 = st.columns([1, 0.2, 1])
+
+            with col_stage1:
+                st.markdown(
+                    '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                    'color: white; padding: 15px; border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 1: Fix Equations & Tables</strong><br/>'
+                    '<span style="font-size: 12px;">Currently here ✓</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            with col_arrow:
+                st.markdown('<div style="text-align: center; font-size: 30px;">→</div>', unsafe_allow_html=True)
+
+            with col_stage2:
+                st.markdown(
+                    '<div style="background: #e0e0e0; color: #666; padding: 15px; '
+                    'border-radius: 10px; text-align: center; border: 2px dashed #999;">'
+                    '<strong>STAGE 2: Run Evaluation</strong><br/>'
+                    '<span style="font-size: 12px;">After fixing</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            st.markdown("---")
+            st.markdown("### 🔍 Extraction Quality Check")
+
+            # Render the region fixer (this shows UI and collects user input)
+            render_region_fixer(
+                text=paper_text,
+                manuscript_name=manuscript,
+                cache_prefix=self.CACHE_PREFIX,
+                llm_query_fn=single_query,
+                min_confidence=0.5
+            )
+
+            # Stop here - wait for user to review/fix regions
+            return
+
+        # --- Phase 2: Section Detection (only after fixes applied) ---
+        if extraction_done and fixes_applied:
+            # Workflow progress indicator for stage 2
+            st.markdown("### 📍 Two-Stage Workflow")
+            col_stage1, col_arrow, col_stage2 = st.columns([1, 0.2, 1])
+
+            with col_stage1:
+                st.markdown(
+                    '<div style="background: #4caf50; color: white; padding: 15px; '
+                    'border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 1: Fix Equations & Tables</strong><br/>'
+                    '<span style="font-size: 12px;">✓ Complete</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            with col_arrow:
+                st.markdown('<div style="text-align: center; font-size: 30px;">→</div>', unsafe_allow_html=True)
+
+            with col_stage2:
+                st.markdown(
+                    '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                    'color: white; padding: 15px; border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 2: Run Evaluation</strong><br/>'
+                    '<span style="font-size: 12px;">Currently here ✓</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            st.markdown("---")
+
+            # Get the fixed text
+            paper_text = st.session_state.get(f"{self.CACHE_PREFIX}_fixed_text_{manuscript}",
+                                             st.session_state.get(text_state_key, ""))
+            st.session_state[text_state_key] = paper_text
+
+            # Run section detection once
+            if not st.session_state.get(scan_state_key):
+                with st.spinner("Detecting section headers..."):
+                    detected = detect_sections(paper_text, self.llm)
+                st.session_state[scan_state_key] = detected
+                st.success(f"✅ Found {len(detected)} section(s) - Ready for evaluation!")
 
         # --- Phase 1.5: Missing section search ---
         detected = st.session_state.get(scan_state_key)

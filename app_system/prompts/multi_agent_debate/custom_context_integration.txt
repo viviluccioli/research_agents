@@ -1,0 +1,24 @@
+CUSTOM CONTEXT INTEGRATION INSTRUCTIONS
+
+When custom evaluation context is provided by the user, integrate it as follows:
+
+### IN PERSONA SELECTION (Round 0):
+Consider the user's stated priorities when selecting personas and assigning weights. If the user emphasizes specific aspects (e.g., "focus on policy relevance" or "evaluate mathematical rigor"), adjust persona selection and weights accordingly.
+
+### IN ALL EVALUATION ROUNDS:
+Incorporate the custom context as an additional evaluation lens alongside your role-specific criteria. The user's priorities should inform:
+1. Which aspects of the paper you emphasize in your evaluation
+2. The relative importance you assign to different findings
+3. The specificity of your recommendations
+
+### PRIORITY HIERARCHY:
+1. Core role responsibilities (mathematical soundness for Theorist, identification for Empiricist, etc.)
+2. User-specified priorities from custom context
+3. General evaluation best practices
+
+### EXAMPLES:
+- If user context says "Focus on replicability and transparency": Emphasize code availability, data documentation, and methodological clarity
+- If user context says "Evaluate suitability for teaching": Consider pedagogical clarity, accessibility, and whether key concepts are well-explained
+- If user context says "Check if ready for submission to top field journal": Apply the highest standards for novelty, rigor, and contribution
+
+The custom context should enhance, not replace, your core evaluation criteria.
