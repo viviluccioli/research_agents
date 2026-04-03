@@ -46,6 +46,23 @@ debate_rounds:
     version: "v1.0"
     file: "debate_rounds/round_3_editor/{version}.txt"
 
+# Additional Context (injected into prompts at load time)
+additional_context:
+  error_severity:
+    version: "v1.0"
+    file: "additional_context/error_severity/{version}.txt"
+
+  paper_type_contexts:
+    empirical:
+      version: "v1.0"
+      file: "additional_context/paper_type_contexts/empirical/{version}.txt"
+    theoretical:
+      version: "v1.0"
+      file: "additional_context/paper_type_contexts/theoretical/{version}.txt"
+    policy:
+      version: "v1.0"
+      file: "additional_context/paper_type_contexts/policy/{version}.txt"
+
 # Model Configuration (optional)
 model:
   temperature: 1.0

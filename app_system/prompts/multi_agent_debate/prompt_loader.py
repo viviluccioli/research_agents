@@ -48,9 +48,61 @@ class PromptLoader:
         with open(file_path, 'r', encoding='utf-8') as f:
             return f.read()
 
+    def get_error_severity_prompt(self) -> str:
+        """
+        Get the shared error severity classification block.
+
+        Returns:
+            The error severity prompt as a string
+        """
+        cache_key = "additional_context_error_severity"
+        if cache_key in self._prompt_cache:
+            return self._prompt_cache[cache_key]
+
+        config = self.config['additional_context']['error_severity']
+        version = config['version']
+        file_path = self.base_dir / config['file'].format(version=version)
+        prompt = self._load_prompt_file(file_path)
+
+        self._prompt_cache[cache_key] = prompt
+        return prompt
+
+    def get_paper_type_context(self, paper_type: str) -> str:
+        """
+        Get the persona selection guidance for a given paper type.
+
+        Args:
+            paper_type: One of "empirical", "theoretical", "policy"
+
+        Returns:
+            The paper type context prompt as a string, or "" if not found
+        """
+        if not paper_type:
+            return ""
+
+        cache_key = f"additional_context_paper_type_{paper_type}"
+        if cache_key in self._prompt_cache:
+            return self._prompt_cache[cache_key]
+
+        paper_type_configs = self.config['additional_context'].get('paper_type_contexts', {})
+        if paper_type not in paper_type_configs:
+            return ""
+
+        config = paper_type_configs[paper_type]
+        version = config['version']
+        file_path = self.base_dir / config['file'].format(version=version)
+
+        try:
+            prompt = self._load_prompt_file(file_path)
+        except FileNotFoundError:
+            return ""
+
+        self._prompt_cache[cache_key] = prompt
+        return prompt
+
     def get_persona_prompt(self, persona_name: str) -> str:
         """
-        Get the system prompt for a specific persona.
+        Get the system prompt for a specific persona, with error severity injected.
 
         Args:
             persona_name: Name of the persona (e.g., "theorist", "empiricist")
@@ -73,6 +125,9 @@ class PromptLoader:
         # Substitute version into file path
         file_path = self.base_dir / file_template.format(version=version)
         prompt = self._load_prompt_file(file_path)
+
+        # Inject error severity block in place of {error_severity} placeholder
+        prompt = prompt.replace("{error_severity}", self.get_error_severity_prompt())
 
         # Cache for future use
         self._prompt_cache[cache_key] = prompt

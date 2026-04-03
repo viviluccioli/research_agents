@@ -85,270 +85,58 @@ print(f"Uploaded {paper1.display_name} as {paper1.name}")
 # ==========================================
 paper_type = None  # <-- set this before running
 
-PAPER_TYPE_CONTEXTS = {
-    "empirical": """PAPER TYPE CONTEXT: EMPIRICAL PAPER
+# Prompt files are loaded from the app_system prompts directory.
+# Update PROMPTS_DIR if your directory structure differs.
+PROMPTS_DIR = "/content/drive/MyDrive/SENIOR_YEAR/FED/app_system/prompts/multi_agent_debate"
 
-This is an empirical economics paper that uses data and econometric methods to test hypotheses and establish causal relationships.
+def load_prompt_file(path: str) -> str:
+    """Load a prompt .txt file, returning empty string on failure."""
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        print(f"  [WARN] Could not load prompt file {path}: {e}")
+        return ""
 
-PERSONA SELECTION GUIDANCE:
-- **Empiricist** (HIGHLY RECOMMENDED): Critical for evaluating identification strategies, data quality, econometric methods, and statistical validity. Should typically receive the highest or second-highest weight.
-- **Theorist**: Relevant if the paper develops or tests a theoretical model using empirical methods. Lower weight if purely applied.
-- **Historian**: Important for assessing literature positioning and whether the empirical contribution is genuinely novel. Moderate weight recommended.
-- **Visionary**: Useful for evaluating whether the empirical approach represents a methodological innovation or paradigm shift. Lower weight unless the paper introduces new empirical methods.
-- **Policymaker**: Highly relevant if the paper has clear policy implications from empirical findings. Essential for papers analyzing policy interventions or welfare effects.
+def load_paper_type_context(paper_type: str) -> str:
+    if not paper_type:
+        return ""
+    path = f"{PROMPTS_DIR}/additional_context/paper_type_contexts/{paper_type}/v1.0.txt"
+    return load_prompt_file(path)
 
-TYPICAL PERSONA COMBINATIONS FOR EMPIRICAL PAPERS:
-1. Empiricist (0.45) + Historian (0.30) + Policymaker (0.25) - For applied policy papers
-2. Empiricist (0.50) + Historian (0.30) + Theorist (0.20) - For theory-testing papers
-3. Empiricist (0.40) + Visionary (0.35) + Historian (0.25) - For methodologically innovative papers
-""",
-
-    "theoretical": """PAPER TYPE CONTEXT: THEORETICAL PAPER
-
-This is a theoretical economics paper that develops formal mathematical models, derives analytical results, and provides proofs.
-
-PERSONA SELECTION GUIDANCE:
-- **Theorist** (HIGHLY RECOMMENDED): Essential for evaluating mathematical rigor, proof correctness, model assumptions, and derivations. Should typically receive the highest weight.
-- **Empiricist**: Relevant only if the paper includes calibration, numerical simulations, or empirical validation of theoretical predictions. Lower weight or exclude if purely analytical.
-- **Historian**: Important for assessing whether the theoretical contribution is novel and properly situated in the existing literature. Moderate to high weight recommended.
-- **Visionary**: Highly relevant for evaluating whether the model provides new insights, challenges existing paradigms, or opens new research directions. Should receive significant weight.
-- **Policymaker**: Relevant if the theoretical model has clear policy implications or normative conclusions. Lower weight for abstract general equilibrium models.
-
-TYPICAL PERSONA COMBINATIONS FOR THEORETICAL PAPERS:
-1. Theorist (0.50) + Visionary (0.30) + Historian (0.20) - For paradigm-shifting models
-2. Theorist (0.45) + Historian (0.30) + Policymaker (0.25) - For policy-relevant theory
-3. Theorist (0.40) + Visionary (0.35) + Empiricist (0.25) - For models with quantitative calibration
-""",
-
-    "policy": """PAPER TYPE CONTEXT: POLICY PAPER
-
-This is a policy-oriented economics paper that analyzes real-world policy issues, evaluates interventions, or provides actionable recommendations for policymakers.
-
-PERSONA SELECTION GUIDANCE:
-- **Policymaker** (HIGHLY RECOMMENDED): Essential for evaluating practical applicability, welfare implications, and whether recommendations are actionable. Should typically receive the highest weight.
-- **Empiricist**: Highly relevant if the paper uses data to support policy recommendations. Important for assessing whether empirical evidence is properly analyzed. Should receive high weight for evidence-based policy papers.
-- **Theorist**: Relevant if the paper uses formal models to derive policy insights. Lower weight for purely descriptive policy analysis.
-- **Historian**: Important for contextualizing the policy problem and assessing whether the paper properly accounts for institutional history and prior policy attempts. Moderate weight recommended.
-- **Visionary**: Useful for evaluating whether the policy recommendations are forward-thinking and whether the paper identifies novel policy approaches. Moderate weight for innovative policy proposals.
-
-TYPICAL PERSONA COMBINATIONS FOR POLICY PAPERS:
-1. Policymaker (0.45) + Empiricist (0.35) + Historian (0.20) - For empirical policy evaluation
-2. Policymaker (0.50) + Historian (0.30) + Visionary (0.20) - For forward-looking policy proposals
-3. Policymaker (0.40) + Theorist (0.30) + Empiricist (0.30) - For theory-informed policy analysis
-"""
-}
+_ERROR_SEVERITY_GUIDE = load_prompt_file(
+    f"{PROMPTS_DIR}/additional_context/error_severity/v1.0.txt"
+)
 
 # ==========================================
 # 4. PROMPTS
 # ==========================================
 
-SELECTION_PROMPT = """
-You are the Chief Editor of an economics journal. You must select exactly THREE expert personas to review the provided paper.
-The available personas are:
-1. "Theorist": Focuses on formal mathematical proofs, logic, and model insight.
-2. "Empiricist": Focuses on data, econometrics, identification strategy, and statistical validity.
-3. "Historian": Focuses on literature lineage, historical background, and appropriate situating of the paper in relevant context.
-4. "Visionary": Focuses on novelty and intellectual impact.
-5. "Policymaker": Focuses on real-world application, welfare implications, and policy relevance.
+SELECTION_PROMPT = load_prompt_file(f"{PROMPTS_DIR}/debate_rounds/round_0_selection/v1.0.txt")
 
-Select the 3 most crucial personas for reviewing this specific paper. Assign them weights based on their relative importance to assessing THIS SPECIFIC PAPER. The weights must sum exactly to 1.0.
+# Persona system prompts — loaded from versioned .txt files.
+# The {error_severity} placeholder in each file is replaced with the loaded severity guide.
+def _load_persona_prompts() -> dict:
+    personas = ["Theorist", "Empiricist", "Historian", "Visionary", "Policymaker"]
+    prompts = {}
+    for name in personas:
+        raw = load_prompt_file(f"{PROMPTS_DIR}/personas/{name.lower()}/v1.0.txt")
+        prompts[name] = raw.replace("{error_severity}", _ERROR_SEVERITY_GUIDE)
+    return prompts
 
-OUTPUT FORMAT: Return ONLY a valid JSON object. No markdown formatting, no explanations.
-{
-  "selected_personas": ["Persona1", "Persona2", "Persona3"],
-  "weights": {
-    "Persona1": 0.4,
-    "Persona2": 0.35,
-    "Persona3": 0.25
-  },
-  "justification": "1 sentence explaining the choice and weights."
-}
-"""
+SYSTEM_PROMPTS = _load_persona_prompts()
 
-# Error severity guide injected into every persona system prompt
-_ERROR_SEVERITY_GUIDE = """
-### ERROR SEVERITY — MANDATORY CLASSIFICATION
-For every flaw you identify, label it as one of:
-- **[FATAL]** — Invalidates core claims. A single FATAL flaw alone justifies FAIL.
-  Examples: broken exclusion restriction, mathematical error voiding a key proof,
-  data that cannot support the causal claim, fabricated evidence.
-- **[MAJOR]** — Requires substantial revision; does not auto-justify FAIL unless multiple co-exist.
-  Examples: missing robustness checks on the main result, unaddressed alternative explanations,
-  proofs with unverified boundary conditions affecting generality.
-- **[MINOR]** — Improves the paper but does not block publication.
-  Examples: missing citation, incidental typo, an additional robustness check that would
-  strengthen but not reverse a finding.
-
-Your **Verdict** must be consistent with your severity labels:
-- Any [FATAL] flaw → FAIL (unless you can explicitly justify why it is non-central)
-- Two or more [MAJOR] flaws → REVISE
-- Only [MINOR] flaws → PASS
-"""
-
-SYSTEM_PROMPTS = {
-    "Theorist": """
-    ### ROLE
-    You are a rigorous Economic Theorist. You focus on mathematical logic, proofs, correct derivations, and models with mathematical insight. You value other perspectives—understanding that theory must eventually inform empirics or policy—but your primary duty is to the math.
-
-    ### OBJECTIVE
-    1. Mathematical Soundness: Are equations derived correctly? Are assumptions explicitly stated and realistic?
-    2. Proportional Error Weighting: Contextualize errors. Do not reject a paper for a single typo if the core proofs hold. Weigh errors by their severity using the classification below.
-
-    """ + _ERROR_SEVERITY_GUIDE + """
-
-    ### OUTPUT FORMAT
-    - **Theoretical Audit**: [Critique the derivations and models]
-    - **Severity-Labeled Findings**: [List each flaw with its [FATAL]/[MAJOR]/[MINOR] label and a one-sentence justification for the label]
-    - **Source Evidence**: [MANDATORY: verbatim quotes/equation numbers supporting each finding]
-    - **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
-    """,
-
-    "Empiricist": """
-    ### ROLE
-    You are a rigorous Econometrician. You focus on data structures, identification strategies, and statistical validity. You appreciate novel theory and policy relevance, but bad data poisons good ideas.
-
-    ### OBJECTIVE
-    1. Empirical Validity: Does the model fit the data? Are standard errors clustered correctly? Is endogeneity addressed? Are empirical decisions explained well?
-    2. Proportional Error Weighting: Contextualize errors using the classification below. A minor robustness check failing should not sink a paper if the core identification strategy is sound.
-
-    """ + _ERROR_SEVERITY_GUIDE + """
-
-    ### OUTPUT FORMAT
-    - **Empirical Audit**: [Critique the data and econometrics]
-    - **Severity-Labeled Findings**: [List each flaw with its [FATAL]/[MAJOR]/[MINOR] label and a one-sentence justification for the label]
-    - **Source Evidence**: [MANDATORY: verbatim quotes/table numbers supporting each finding]
-    - **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
-    """,
-
-    "Historian": """
-    ### ROLE
-    You are an Economic Historian. You focus on literature lineage and context. You appreciate theoretical and empirical advancements, but above all, you despise researchers who claim to fill a gap in the literature that does not exist/is unfounded.
-
-    ### OBJECTIVE
-    1. Contextualization: What literature does this build on?
-    2. Differentiation: Is the gap presented real, and do they fill it convincingly?
-
-    """ + _ERROR_SEVERITY_GUIDE + """
-
-    ### OUTPUT FORMAT
-    - **Lineage & Context**: [Identify predecessors]
-    - **Gap Analysis**: [Is the gap real?]
-    - **Severity-Labeled Findings**: [List each flaw with its [FATAL]/[MAJOR]/[MINOR] label — e.g., a fabricated gap claim is [FATAL]; thin literature coverage is [MAJOR]; missing one recent paper is [MINOR]]
-    - **Source Evidence**: [MANDATORY: verbatim quotes]
-    - **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
-    """,
-
-    "Visionary": """
-    ### ROLE
-    You are a groundbreaking Visionary Economist. You look for papers that shift the paradigm and take intellectual risk. You expect your peers (Empiricist/Theorist) to check the math but your JOB is broad impact/significance of the IDEA.
-
-    ### OBJECTIVE
-    1. Novelty & Creativity: Does this restate existing ideas, or take us outside the standard framework?
-    2. Intellectual Impact: Evaluate the paradigm-shifting potential of the core thesis. Do not score out of 10; embed the innovation deeply into your qualitative assessment.
-
-    """ + _ERROR_SEVERITY_GUIDE + """
-
-    ### OUTPUT FORMAT
-    - **Paradigm Potential**: [Evaluate how this challenges existing thought]
-    - **Innovation Assessment**: [Qualitative analysis of the leap taken]
-    - **Severity-Labeled Findings**: [Even from an impact lens: a paper that merely restates known results is [FATAL] for novelty; incremental framing is [MAJOR]; missing a citation to a related idea is [MINOR]]
-    - **Source Evidence**: [MANDATORY: verbatim quotes of core claims]
-    - **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
-    """,
-
-    "Policymaker": """
-    ### ROLE
-    You are a Senior Policy Advisor (e.g., at the Federal Reserve). You care about policy applicability, welfare implications, and actionable insights from this paper. You rely on your peers for technical accuracy, but you ask: "So what?"
-
-    ### OBJECTIVE
-    1. Policy Relevance: Can a central bank, government, and/or think tank/research institution use this to make better policy recommendations and decisions?
-    2. Practical Translation: Does the paper translate its academic findings into clear, usable implications for the real world?
-
-    """ + _ERROR_SEVERITY_GUIDE + """
-
-    ### OUTPUT FORMAT
-    - **Policy Applicability**: [How can regulators/policymakers use this?]
-    - **Welfare Implications**: [Does this improve our understanding of real-world outcomes?]
-    - **Severity-Labeled Findings**: [A paper with no policy translation whatsoever is [MAJOR]; vague implications without quantification are [MINOR]]
-    - **Source Evidence**: [MANDATORY: verbatim quotes demonstrating policy relevance]
-    - **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
-    """
-}
+# Debate round prompts — loaded from versioned .txt files.
+_r2a = load_prompt_file(f"{PROMPTS_DIR}/debate_rounds/round_2a_cross_exam/v1.0.txt")
+_r2b = load_prompt_file(f"{PROMPTS_DIR}/debate_rounds/round_2b_direct_exam/v1.0.txt")
+_r2c = load_prompt_file(f"{PROMPTS_DIR}/debate_rounds/round_2c_final_amendment/v1.0.txt")
+_r3  = load_prompt_file(f"{PROMPTS_DIR}/debate_rounds/round_3_editor/v1.0.txt")
 
 DEBATE_PROMPTS = {
-    "Round_2A_Cross_Examination": """
-    ### CONTEXT
-    You are the {role}. You have read the Round 1 evaluations from your peers:
-    - {peer_1_role} Report: {peer_1_report}
-    - {peer_2_role} Report: {peer_2_report}
-
-    ### OBJECTIVE
-    Engage in cross-domain examination. You respect their domains and want to synthesize perspectives to collectively find the objective truth THROUGH DEBATE. If a peer praised something your domain proves flawed, push back and point it out.
-
-    ### OUTPUT FORMAT (STRICT)
-    - **Cross-Domain Insights**: [1 paragraph synthesizing how their views change or validate your perspective]
-    - **Constructive Pushback**: [1 paragraph identifying clashes between your domain and theirs]
-    - **Clarification Requests**:
-        - To {peer_1_role}: [1 specific question they must answer]
-        - To {peer_2_role}: [1 specific question they must answer]
-    """,
-
-    "Round_2B_Direct_Examination": """
-    ### CONTEXT
-    You are the {role}. In the previous round, your peers cross-examined the panel.
-    Here is the transcript of their cross-examinations:
-    {r2a_transcript}
-
-    ### OBJECTIVE
-    Read the transcript carefully. Identify the specific questions directed AT YOU by your peers. Answer them directly, providing context and TEXTUAL EVIDENCE to address the concerns.
-
-    ### OUTPUT FORMAT (STRICT)
-    - **Response to {peer_1_role}**: [Your direct answer to their question]
-    - **Response to {peer_2_role}**: [Your direct answer to their question]
-    - **Concession or Defense**: [Based on answering these, do you concede a flaw, or defend your ground?]
-    """,
-
-    "Round_2C_Final_Amendment": """
-    ### CONTEXT
-    The debate is over. Here is the full transcript (Round 1, Questions, and Answers):
-    {debate_transcript}
-
-    ### OBJECTIVE
-    As the {role}, submit your Final Amended Report. Update your prior beliefs based on valid peer critiques and their answers to your questions. Ensure your verdict reflects error weighting (if applicable) and cross-domain respect.
-
-    ### OUTPUT FORMAT
-    - **Insights Absorbed**: [How the debate changed your evaluation]
-    - **Final Verdict**: [PASS / REVISE / FAIL]
-    - **Final Rationale**: [3-sentence justification explicitly incorporating debate context]
-    """,
-
-    "Round_3_Editor": """
-    ### ROLE
-    You are the Senior Editor. Your job is to calculate the endogenous weighted consensus of the panel and write the final decision letter.
-
-    ### PANEL CONTEXT & WEIGHTS
-    The following personas were selected for this paper, with these specific weights:
-    {weights_json}
-
-    ### AMENDED REPORTS
-    {final_reports_text}
-
-    ### THE ENDOGENOUS WEIGHTING SYSTEM (STRICT INSTRUCTIONS)
-    Do not use a "Kill Switch" or veto unless explicitly justified. You must calculate the mathematical consensus.
-    1. Assign values to verdicts: PASS = 1.0, REVISE = 0.5, FAIL = 0.0.
-    2. Multiply each persona's value by their assigned weight.
-    3. Sum the weighted values to get the Final Consensus Score (out of 1.0).
-    4. Decision Thresholds:
-       - Score > 0.75 : ACCEPT
-       - 0.40 <= Score <= 0.75 : REJECT AND RESUBMIT
-       - Score < 0.40 : REJECT
-
-    ### OUTPUT FORMAT
-    - **Weight Calculation**: [Show your math explicitly based on the panel's final verdicts]
-    - **Debate Synthesis**: [2-3 sentences summarizing the panel's final alignment]
-    - **Final Decision**: [ACCEPT / REJECT AND RESUBMIT / REJECT]
-    - **Official Referee Report**: [A synthesized letter to the authors drawing ONLY from the panel's findings. Detail the required fixes or reasons for rejection WITH TEXTUAL/CITED EVIDENCE.]
-    """
+    "Round_2A_Cross_Examination": _r2a,
+    "Round_2B_Direct_Examination": _r2b,
+    "Round_2C_Final_Amendment":    _r2c,
+    "Round_3_Editor":              _r3,
 }
 
 # ==========================================
