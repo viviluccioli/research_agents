@@ -1,0 +1,67 @@
+MEMORANDUM
+
+TO: Board of Governors
+FROM: Policy Analysis Division
+DATE: April 8, 2026
+RE: Proposed Digital Currency Reserve Requirement
+
+EXECUTIVE SUMMARY
+
+This memo proposes establishing a 10% reserve requirement for financial institutions holding digital currency assets. The policy aims to mitigate systemic risk while promoting innovation in digital finance.
+
+BACKGROUND
+
+The rapid growth of digital currency adoption has created new systemic risks in the financial system. As of Q1 2026, commercial banks hold approximately $450 billion in digital currency assets on behalf of customers, representing 8% of total deposits. Current regulations do not require specific reserves for these holdings.
+
+Three major concerns have emerged:
+1. Liquidity risk during market volatility
+2. Operational risk from cybersecurity threats
+3. Counterparty risk from unregulated exchanges
+
+POLICY RECOMMENDATION
+
+We recommend implementing a 10% reserve requirement for all FDIC-insured institutions holding digital currency assets exceeding $50 million. Key provisions include:
+
+Action Items:
+- Phase-in period: 18 months from rule finalization
+- Reserve assets must be held in USD or Treasury securities
+- Quarterly reporting requirement to ensure compliance
+- Exemption for custodial services with full backing
+
+STAKEHOLDER ANALYSIS
+
+Primary stakeholders include:
+- Commercial banks: Will face increased capital requirements
+- Digital currency exchanges: May see reduced institutional demand
+- Depositors: Will benefit from enhanced protection
+- Federal Reserve: Will gain better visibility into digital asset exposure
+
+Regional banks have expressed concerns about compliance costs, estimating $2-5 million for systems upgrades.
+
+COST-BENEFIT ANALYSIS
+
+Estimated annual costs:
+- Industry compliance: $450 million (first year), $120 million ongoing
+- Federal oversight: $25 million annually
+
+Estimated benefits:
+- Reduced systemic risk exposure: $2-8 billion annually (based on stress testing)
+- Enhanced consumer protection
+- Improved market stability
+
+IMPLEMENTATION TIMELINE
+
+- Month 1-3: Rulemaking process and public comment
+- Month 4-6: Final rule publication
+- Month 7-24: Phase-in period for affected institutions
+- Month 25: Full compliance required
+
+ALTERNATIVE OPTIONS
+
+Option 1: 5% reserve requirement - Lower burden but less risk mitigation
+Option 2: Risk-weighted approach - More complex but better tailored
+Option 3: Status quo - No additional regulatory burden but maintains current risk exposure
+
+RECOMMENDATION
+
+We recommend proceeding with the proposed 10% reserve requirement. This balanced approach provides meaningful risk reduction while allowing sufficient time for industry adaptation. The policy aligns with international best practices and can be adjusted based on market evolution.

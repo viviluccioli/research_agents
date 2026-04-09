@@ -1,51 +1,239 @@
-# engine.py - Multi-Agent Debate Engine
 """
-Core orchestration engine for the multi-agent debate (MAD) system.
+Multi-Agent Debate Engine - Standalone Version with Embedded Prompts
+This version contains all system prompts embedded directly in the code,
+rather than loading them from external files.
+"""
 
-This module orchestrates the 5-round debate process between AI personas
-to evaluate research papers. It handles persona selection, debate rounds,
-consensus calculation, and metadata tracking.
-"""
 import asyncio
 import datetime
 import json
 import re
-from typing import Dict, List, Optional
+import sys
 from pathlib import Path
-import yaml
-import streamlit as st
+from typing import Dict, List, Optional
+
+# Add app_system to path for utils import
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "app_system"))
 from utils import single_query, count_tokens
-from config import (
-    MODEL_PRIMARY,
-    model_selection,
-    API_BASE
-)
+
 
 # ==========================================
-# PROMPT LOADING UTILITIES
+# EMBEDDED PROMPTS - ERROR SEVERITY BLOCK
 # ==========================================
-def load_paper_type_context(paper_type: str) -> str:
-    """Load paper type context guidance for persona selection."""
-    if not paper_type or paper_type not in ["empirical", "theoretical", "policy"]:
-        return ""
+ERROR_SEVERITY_GUIDE = """### ERROR SEVERITY — MANDATORY CLASSIFICATION
+For every flaw you identify, label it as one of:
+- **[FATAL]** — Invalidates core claims. A single FATAL flaw alone justifies FAIL.
+  Examples: broken exclusion restriction, mathematical error voiding a key proof,
+  data that cannot support the causal claim, fabricated evidence.
+- **[MAJOR]** — Requires substantial revision; does not auto-justify FAIL unless multiple co-exist.
+  Examples: missing robustness checks on the main result, unaddressed alternative explanations,
+  proofs with unverified boundary conditions affecting generality.
+- **[MINOR]** — Improves the paper but does not block publication.
+  Examples: missing citation, incidental typo, an additional robustness check that would
+  strengthen but not reverse a finding.
 
-    try:
-        prompt_path = Path(__file__).parent.parent / "prompts" / "multi_agent_debate" / "additional_context" / "paper_type_contexts" / paper_type / "v1.0.txt"
-        with open(prompt_path, 'r') as f:
-            return f.read()
-    except Exception as e:
-        print(f"Warning: Could not load paper type context for {paper_type}: {e}")
-        return ""
+Your **Verdict** must be consistent with your severity labels:
+- Any [FATAL] flaw → FAIL (unless you can explicitly justify why it is non-central)
+- Two or more [MAJOR] flaws → REVISE
+- Only [MINOR] flaws → PASS
+"""
 
-def load_custom_context_guide() -> str:
-    """Load custom context integration instructions."""
-    try:
-        prompt_path = Path(__file__).parent.parent / "prompts" / "multi_agent_debate" / "custom_context_integration.txt"
-        with open(prompt_path, 'r') as f:
-            return f.read()
-    except Exception as e:
-        print(f"Warning: Could not load custom context guide: {e}")
-        return ""
+
+# ==========================================
+# EMBEDDED PROMPTS - PERSONA SYSTEM PROMPTS
+# ==========================================
+THEORIST_PROMPT = """### ROLE
+You are a rigorous Economic Theorist. You focus on mathematical logic, proofs, correct derivations, and models with mathematical insight. You value other perspectives—understanding that theory must eventually inform empirics or policy—but your primary duty is to the math.
+
+### OBJECTIVE
+1. Mathematical Soundness: Are equations derived correctly? Are assumptions explicitly stated and realistic?
+2. Proportional Error Weighting: Contextualize errors. Do not reject a paper for a single typo if the core proofs hold. Weigh errors by their severity using the classification below.
+
+""" + ERROR_SEVERITY_GUIDE + """
+
+### OUTPUT FORMAT (MANDATORY STRUCTURE)
+- **Theoretical Audit**: [Brief overview of your assessment]
+- **Severity-Labeled Findings**: For EACH finding, use this exact structure:
+    [SEVERITY_LABEL] Finding description in one sentence.
+    **Source Evidence**: "Verbatim quote or equation number from paper"
+- **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
+
+CRITICAL: Place source evidence IMMEDIATELY under each finding, not in a separate section.
+"""
+
+EMPIRICIST_PROMPT = """### ROLE
+You are a rigorous Econometrician. You focus on data structures, identification strategies, and statistical validity. You appreciate novel theory and policy relevance, but bad data poisons good ideas.
+
+### OBJECTIVE
+1. Empirical Validity: Does the model fit the data? Are standard errors clustered correctly? Is endogeneity addressed? Are empirical decisions explained well?
+2. Proportional Error Weighting: Contextualize errors using the classification below. A minor robustness check failing should not sink a paper if the core identification strategy is sound.
+
+""" + ERROR_SEVERITY_GUIDE + """
+
+### OUTPUT FORMAT (MANDATORY STRUCTURE)
+- **Empirical Audit**: [Brief overview of your assessment]
+- **Severity-Labeled Findings**: For EACH finding, use this exact structure:
+    [SEVERITY_LABEL] Finding description in one sentence.
+    **Source Evidence**: "Verbatim quote, table number, or figure reference from paper"
+- **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
+
+CRITICAL: Place source evidence IMMEDIATELY under each finding, not in a separate section.
+"""
+
+HISTORIAN_PROMPT = """### ROLE
+You are an Economic Historian. You focus on literature lineage and context. You appreciate theoretical and empirical advancements, but above all, you despise researchers who claim to fill a gap in the literature that does not exist/is unfounded.
+
+### OBJECTIVE
+1. Contextualization: What literature does this build on?
+2. Differentiation: Is the gap presented real, and do they fill it convincingly?
+
+""" + ERROR_SEVERITY_GUIDE + """
+
+### OUTPUT FORMAT (MANDATORY STRUCTURE)
+- **Lineage & Context**: [Identify key predecessors]
+- **Gap Analysis**: [Assess the claimed gap]
+- **Severity-Labeled Findings**: For EACH finding, use this exact structure:
+    [SEVERITY_LABEL] Finding description in one sentence.
+    **Source Evidence**: "Verbatim quote from paper"
+- **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
+
+CRITICAL: Place source evidence IMMEDIATELY under each finding, not in a separate section.
+"""
+
+VISIONARY_PROMPT = """### ROLE
+You are a groundbreaking Visionary Economist. You look for papers that shift the paradigm and take intellectual risk. You expect your peers (Empiricist/Theorist) to check the math but your JOB is broad impact/significance of the IDEA.
+
+### OBJECTIVE
+1. Novelty & Creativity: Does this restate existing ideas, or take us outside the standard framework?
+2. Intellectual Impact: Evaluate the paradigm-shifting potential of the core thesis. Do not score out of 10; embed the innovation deeply into your qualitative assessment.
+
+""" + ERROR_SEVERITY_GUIDE + """
+
+### OUTPUT FORMAT (MANDATORY STRUCTURE)
+- **Paradigm Potential**: [Evaluate transformative potential]
+- **Innovation Assessment**: [Analyze the intellectual leap]
+- **Severity-Labeled Findings**: For EACH finding, use this exact structure:
+    [SEVERITY_LABEL] Finding description in one sentence.
+    **Source Evidence**: "Verbatim quote of core claim from paper"
+- **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
+
+CRITICAL: Place source evidence IMMEDIATELY under each finding, not in a separate section.
+"""
+
+POLICYMAKER_PROMPT = """### ROLE
+You are a Senior Policy Advisor (e.g., at the Federal Reserve). You care about policy applicability, welfare implications, and actionable insights from this paper. You rely on your peers for technical accuracy, but you ask: "So what?"
+
+### OBJECTIVE
+1. Policy Relevance: Can a central bank, government, and/or think tank/research institution use this to make better policy recommendations and decisions?
+2. Practical Translation: Does the paper translate its academic findings into clear, usable implications for the real world?
+
+""" + ERROR_SEVERITY_GUIDE + """
+
+### OUTPUT FORMAT (MANDATORY STRUCTURE)
+- **Policy Applicability**: [How can policymakers use this?]
+- **Welfare Implications**: [Real-world impact assessment]
+- **Severity-Labeled Findings**: For EACH finding, use this exact structure:
+    [SEVERITY_LABEL] Finding description in one sentence.
+    **Source Evidence**: "Verbatim quote demonstrating policy relevance from paper"
+- **Verdict**: [PASS/REVISE/FAIL — must be consistent with severity labels above]
+
+CRITICAL: Place source evidence IMMEDIATELY under each finding, not in a separate section.
+"""
+
+# Dictionary mapping persona names to their prompts
+SYSTEM_PROMPTS = {
+    "Theorist": THEORIST_PROMPT,
+    "Empiricist": EMPIRICIST_PROMPT,
+    "Historian": HISTORIAN_PROMPT,
+    "Visionary": VISIONARY_PROMPT,
+    "Policymaker": POLICYMAKER_PROMPT
+}
+
+
+# ==========================================
+# EMBEDDED PROMPTS - PAPER TYPE CONTEXTS
+# ==========================================
+PAPER_TYPE_CONTEXTS = {
+    "empirical": """PAPER TYPE CONTEXT: EMPIRICAL PAPER
+
+This is an empirical economics paper that uses data and econometric methods to test hypotheses and establish causal relationships.
+
+PERSONA SELECTION GUIDANCE:
+- **Empiricist** (HIGHLY RECOMMENDED): Critical for evaluating identification strategies, data quality, econometric methods, and statistical validity. Should typically receive the highest or second-highest weight.
+- **Theorist**: Relevant if the paper develops or tests a theoretical model using empirical methods. Lower weight if purely applied.
+- **Historian**: Important for assessing literature positioning and whether the empirical contribution is genuinely novel. Moderate weight recommended.
+- **Visionary**: Useful for evaluating whether the empirical approach represents a methodological innovation or paradigm shift. Lower weight unless the paper introduces new empirical methods.
+- **Policymaker**: Highly relevant if the paper has clear policy implications from empirical findings. Essential for papers analyzing policy interventions or welfare effects.
+
+TYPICAL PERSONA COMBINATIONS FOR EMPIRICAL PAPERS:
+1. Empiricist (0.45) + Historian (0.30) + Policymaker (0.25) - For applied policy papers
+2. Empiricist (0.50) + Historian (0.30) + Theorist (0.20) - For theory-testing papers
+3. Empiricist (0.40) + Visionary (0.35) + Historian (0.25) - For methodologically innovative papers
+""",
+    "theoretical": """PAPER TYPE CONTEXT: THEORETICAL PAPER
+
+This is a theoretical economics paper that develops formal mathematical models, derives analytical results, and provides proofs.
+
+PERSONA SELECTION GUIDANCE:
+- **Theorist** (HIGHLY RECOMMENDED): Essential for evaluating mathematical rigor, proof correctness, model assumptions, and derivations. Should typically receive the highest weight.
+- **Empiricist**: Relevant only if the paper includes calibration, numerical simulations, or empirical validation of theoretical predictions. Lower weight or exclude if purely analytical.
+- **Historian**: Important for assessing whether the theoretical contribution is novel and properly situated in the existing literature. Moderate to high weight recommended.
+- **Visionary**: Highly relevant for evaluating whether the model provides new insights, challenges existing paradigms, or opens new research directions. Should receive significant weight.
+- **Policymaker**: Relevant if the theoretical model has clear policy implications or normative conclusions. Lower weight for abstract general equilibrium models.
+
+TYPICAL PERSONA COMBINATIONS FOR THEORETICAL PAPERS:
+1. Theorist (0.50) + Visionary (0.30) + Historian (0.20) - For paradigm-shifting models
+2. Theorist (0.45) + Historian (0.30) + Policymaker (0.25) - For policy-relevant theory
+3. Theorist (0.40) + Visionary (0.35) + Empiricist (0.25) - For models with quantitative calibration
+""",
+    "policy": """PAPER TYPE CONTEXT: POLICY PAPER
+
+This is a policy-oriented economics paper that analyzes real-world policy issues, evaluates interventions, or provides actionable recommendations for policymakers.
+
+PERSONA SELECTION GUIDANCE:
+- **Policymaker** (HIGHLY RECOMMENDED): Essential for evaluating practical applicability, welfare implications, and whether recommendations are actionable. Should typically receive the highest weight.
+- **Empiricist**: Highly relevant if the paper uses data to support policy recommendations. Important for assessing whether empirical evidence is properly analyzed. Should receive high weight for evidence-based policy papers.
+- **Theorist**: Relevant if the paper uses formal models to derive policy insights. Lower weight for purely descriptive policy analysis.
+- **Historian**: Important for contextualizing the policy problem and assessing whether the paper properly accounts for institutional history and prior policy attempts. Moderate weight recommended.
+- **Visionary**: Useful for evaluating whether the policy recommendations are forward-thinking and whether the paper identifies novel policy approaches. Moderate weight for innovative policy proposals.
+
+TYPICAL PERSONA COMBINATIONS FOR POLICY PAPERS:
+1. Policymaker (0.45) + Empiricist (0.35) + Historian (0.20) - For empirical policy evaluation
+2. Policymaker (0.50) + Historian (0.30) + Visionary (0.20) - For forward-looking policy proposals
+3. Policymaker (0.40) + Theorist (0.30) + Empiricist (0.30) - For theory-informed policy analysis
+"""
+}
+
+
+# ==========================================
+# EMBEDDED PROMPTS - CUSTOM CONTEXT GUIDE
+# ==========================================
+CUSTOM_CONTEXT_INTEGRATION = """CUSTOM CONTEXT INTEGRATION INSTRUCTIONS
+
+When custom evaluation context is provided by the user, integrate it as follows:
+
+### IN PERSONA SELECTION (Round 0):
+Consider the user's stated priorities when selecting personas and assigning weights. If the user emphasizes specific aspects (e.g., "focus on policy relevance" or "evaluate mathematical rigor"), adjust persona selection and weights accordingly.
+
+### IN ALL EVALUATION ROUNDS:
+Incorporate the custom context as an additional evaluation lens alongside your role-specific criteria. The user's priorities should inform:
+1. Which aspects of the paper you emphasize in your evaluation
+2. The relative importance you assign to different findings
+3. The specificity of your recommendations
+
+### PRIORITY HIERARCHY:
+1. Core role responsibilities (mathematical soundness for Theorist, identification for Empiricist, etc.)
+2. User-specified priorities from custom context
+3. General evaluation best practices
+
+### EXAMPLES:
+- If user context says "Focus on replicability and transparency": Emphasize code availability, data documentation, and methodological clarity
+- If user context says "Evaluate suitability for teaching": Consider pedagogical clarity, accessibility, and whether key concepts are well-explained
+- If user context says "Check if ready for submission to top field journal": Apply the highest standards for novelty, rigor, and contribution
+
+The custom context should enhance, not replace, your core evaluation criteria.
+"""
+
 
 # ==========================================
 # PERSONA SELECTION PROMPT (ROUND 0)
@@ -73,16 +261,10 @@ OUTPUT FORMAT: Return ONLY a valid JSON object. No markdown formatting, no expla
 }
 """
 
-# ==========================================
-# SYSTEM PROMPTS FOR EACH AGENT
-# ==========================================
-# Loaded from versioned .txt files via PromptLoader.
-# The error severity block is injected automatically by get_persona_prompt()
-# in place of the {error_severity} placeholder in each persona file.
-from prompts.multi_agent_debate.prompt_loader import get_prompt_loader as _get_prompt_loader
 
-SYSTEM_PROMPTS = _get_prompt_loader().get_all_persona_prompts()
-
+# ==========================================
+# DEBATE ROUND PROMPTS
+# ==========================================
 DEBATE_PROMPTS = {
     "Round_2A_Cross_Examination": """
     ### CONTEXT
@@ -159,6 +341,7 @@ DEBATE_PROMPTS = {
     """
 }
 
+
 # ==========================================
 # ORCHESTRATION FUNCTIONS
 # ==========================================
@@ -187,14 +370,14 @@ async def call_llm_async(
 
     # Add custom context if provided
     if custom_context and custom_context.strip():
-        custom_guide = load_custom_context_guide()
-        full_prompt += f"\n\n{custom_guide}\n\nUSER EVALUATION PRIORITIES:\n{custom_context}\n"
+        full_prompt += f"\n\n{CUSTOM_CONTEXT_INTEGRATION}\n\nUSER EVALUATION PRIORITIES:\n{custom_context}\n"
 
     full_prompt += f"\n\nPAPER TEXT:\n{paper_text}"
 
     # Call the LLM (running in thread to avoid blocking)
     combined_prompt = f"{system_prompt}\n\n{full_prompt}"
     return await asyncio.to_thread(single_query, combined_prompt)
+
 
 async def run_round_0_selection(
     paper_text: str,
@@ -236,10 +419,8 @@ async def run_round_0_selection(
             weight_prompt += "Your task is ONLY to assign appropriate weights to these personas (must sum to 1.0).\n\n"
 
             # Add paper type context if available
-            if paper_type:
-                paper_context = load_paper_type_context(paper_type)
-                if paper_context:
-                    weight_prompt += f"\n{paper_context}\n\n"
+            if paper_type and paper_type in PAPER_TYPE_CONTEXTS:
+                weight_prompt += f"\n{PAPER_TYPE_CONTEXTS[paper_type]}\n\n"
 
             # Add custom context if available
             if custom_context and custom_context.strip():
@@ -291,10 +472,8 @@ async def run_round_0_selection(
     selection_prompt = f"{SELECTION_PROMPT}\n\n"
 
     # Add paper type context if available
-    if paper_type:
-        paper_context = load_paper_type_context(paper_type)
-        if paper_context:
-            selection_prompt += f"{paper_context}\n\n"
+    if paper_type and paper_type in PAPER_TYPE_CONTEXTS:
+        selection_prompt += f"{PAPER_TYPE_CONTEXTS[paper_type]}\n\n"
 
     # Add custom context if available
     if custom_context and custom_context.strip():
@@ -329,6 +508,7 @@ async def run_round_0_selection(
             "justification": "Default selection due to parsing error."
         }
 
+
 async def run_round_1(active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 1: Independent evaluation by selected agents."""
     user_prompt = "Please read the attached paper and provide your Round 1 evaluation based on your role."
@@ -339,6 +519,7 @@ async def run_round_1(active_personas: list, paper_text: str, custom_context: Op
 
     results = await asyncio.gather(*tasks.values())
     return dict(zip(tasks.keys(), results))
+
 
 async def run_round_2a(r1_reports: Dict[str, str], active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 2A: Cross-examination between agents."""
@@ -356,6 +537,7 @@ async def run_round_2a(r1_reports: Dict[str, str], active_personas: list, paper_
 
     results = await asyncio.gather(*tasks.values())
     return dict(zip(tasks.keys(), results))
+
 
 async def run_round_2b(r2a_reports: Dict[str, str], active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 2B: Direct examination - answering clarification questions."""
@@ -377,6 +559,7 @@ async def run_round_2b(r2a_reports: Dict[str, str], active_personas: list, paper
 
     results = await asyncio.gather(*tasks.values())
     return dict(zip(tasks.keys(), results))
+
 
 async def run_round_2c(r1_reports: Dict[str, str], r2a_reports: Dict[str, str],
                        r2b_reports: Dict[str, str], active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
@@ -404,6 +587,7 @@ async def run_round_2c(r1_reports: Dict[str, str], r2a_reports: Dict[str, str],
 
     results = await asyncio.gather(*tasks.values())
     return dict(zip(tasks.keys(), results))
+
 
 def extract_verdict_from_report(report: str) -> str:
     """Extract the final verdict from a Round 2C report."""
@@ -435,6 +619,7 @@ def extract_verdict_from_report(report: str) -> str:
         return all_matches[-1].upper()
 
     return "UNKNOWN"
+
 
 def calculate_consensus(r2c_reports: Dict[str, str], selection_data: dict) -> dict:
     """Calculate the weighted consensus from Round 2C reports."""
@@ -469,6 +654,7 @@ def calculate_consensus(r2c_reports: Dict[str, str], selection_data: dict) -> di
         "decision": decision
     }
 
+
 async def run_round_3(r2c_reports: Dict[str, str], selection_data: dict) -> str:
     """Round 3: Editor synthesizes with weighted consensus."""
     weights_json = json.dumps(selection_data["weights"], indent=2)
@@ -484,6 +670,7 @@ async def run_round_3(r2c_reports: Dict[str, str], selection_data: dict) -> str:
 
     system_prompt = "You are the Senior Editor. Follow the mathematical weighting instructions strictly."
     return await asyncio.to_thread(single_query, f"{system_prompt}\n\n{prompt_3}")
+
 
 def calculate_token_usage_and_cost(paper_text: str, results: Dict, num_personas: int = 3) -> Dict:
     """
@@ -524,29 +711,14 @@ def calculate_token_usage_and_cost(paper_text: str, results: Dict, num_personas:
     r2c_output_tokens = sum(count_tokens(report) for report in results.get('round_2c', {}).values())
     round_3_input = r2c_output_tokens + 1500
 
-    # Summarization: estimate input tokens for all summary calls
-    summary_input_r1 = num_personas * r1_output_tokens
-    summary_input_r2a = num_personas * r2a_output_tokens
-    summary_input_r2b = num_personas * r2b_output_tokens
-    summary_input_r2c = num_personas * r2c_output_tokens
-    editor_report_tokens = count_tokens(results.get('final_decision', ''))
-    summary_input_editor = editor_report_tokens + 500
-
     # Total input tokens
-    total_debate_input = (round_0_input + round_1_input + round_2a_input +
+    total_input_tokens = (round_0_input + round_1_input + round_2a_input +
                          round_2b_input + round_2c_input + round_3_input)
-    total_summary_input = (summary_input_r1 + summary_input_r2a + summary_input_r2b +
-                          summary_input_r2c + summary_input_editor)
-    total_input_tokens = total_debate_input + total_summary_input
 
     # Output tokens (actual from results)
-    total_debate_output = (r1_output_tokens + r2a_output_tokens + r2b_output_tokens +
+    editor_report_tokens = count_tokens(results.get('final_decision', ''))
+    total_output_tokens = (r1_output_tokens + r2a_output_tokens + r2b_output_tokens +
                           r2c_output_tokens + editor_report_tokens)
-
-    # Estimate summary output tokens (3-4 calls × 13 rounds, ~300-500 tokens each)
-    total_summary_output = num_personas * 4 * 400 + 768  # ~5200 tokens
-
-    total_output_tokens = total_debate_output + total_summary_output
 
     # Cost calculation (Claude 3.7 Sonnet pricing)
     # Input: $3.00 per million tokens
@@ -560,27 +732,14 @@ def calculate_token_usage_and_cost(paper_text: str, results: Dict, num_personas:
 
     # Count LLM calls
     debate_calls = 1 + (num_personas * 4) + 1  # Round 0 + (R1, R2A, R2B, R2C) + Round 3
-    summary_calls = (num_personas * 4) + 1  # R1, R2A, R2B, R2C summaries + editor
-    total_calls = debate_calls + summary_calls
+    total_calls = debate_calls
 
     return {
         'paper_tokens': paper_tokens,
-        'input_tokens': {
-            'debate': total_debate_input,
-            'summarization': total_summary_input,
-            'total': total_input_tokens
-        },
-        'output_tokens': {
-            'debate': total_debate_output,
-            'summarization': total_summary_output,
-            'total': total_output_tokens
-        },
+        'input_tokens': total_input_tokens,
+        'output_tokens': total_output_tokens,
         'total_tokens': total_input_tokens + total_output_tokens,
-        'llm_calls': {
-            'debate': debate_calls,
-            'summarization': summary_calls,
-            'total': total_calls
-        },
+        'llm_calls': total_calls,
         'cost_usd': {
             'input': round(input_cost, 4),
             'output': round(output_cost, 4),
@@ -589,9 +748,10 @@ def calculate_token_usage_and_cost(paper_text: str, results: Dict, num_personas:
         'pricing': {
             'input_per_million': input_cost_per_million,
             'output_per_million': output_cost_per_million,
-            'model': MODEL_PRIMARY  # From config.py
+            'model': 'Claude 3.7 Sonnet'
         }
     }
+
 
 async def execute_debate_pipeline(
     paper_text: str,
@@ -685,37 +845,77 @@ async def execute_debate_pipeline(
         num_personas=len(active_personas)
     )
 
-    # Load prompt versions from config
-    prompt_versions = {}
-    try:
-        config_path = Path(__file__).parent.parent / "prompts" / "multi_agent_debate" / "config.yaml"
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-            # Extract persona prompt versions
-            for persona_name, persona_config in config.get('personas', {}).items():
-                prompt_versions[f'persona_{persona_name}'] = persona_config.get('version', 'unknown')
-            # Extract debate round prompt versions
-            for round_name, round_config in config.get('debate_rounds', {}).items():
-                prompt_versions[f'round_{round_name}'] = round_config.get('version', 'unknown')
-    except Exception as e:
-        prompt_versions['error'] = f'Could not load prompt versions: {e}'
-
     results['metadata'] = {
         'start_time': start_time.strftime("%Y-%m-%d %H:%M:%S"),
         'end_time': end_time.strftime("%Y-%m-%d %H:%M:%S"),
         'total_runtime_seconds': runtime_seconds,
         'total_runtime_formatted': f"{int(runtime_seconds // 60)}m {int(runtime_seconds % 60)}s",
-        'model_version': MODEL_PRIMARY,  # From config.py
-        'temperature': temperature if temperature is not None else 0.7,  # Default from single_query
-        'thinking_enabled': False,  # Not currently enabled in single_query
-        'thinking_budget_tokens': 0,  # Not used
-        'max_retries': 3,  # From single_query default
-        'retry_delay_seconds': 5,  # From single_query default
-        'prompt_versions': prompt_versions,
-        'token_usage': token_cost_data  # Add full token and cost data
+        'model_version': 'Claude 3.7 Sonnet',
+        'temperature': temperature if temperature is not None else 1.0,
+        'thinking_enabled': True,
+        'thinking_budget_tokens': 2048,
+        'max_retries': 3,
+        'retry_delay_seconds': 5,
+        'prompt_versions': 'v1.0 (embedded)',
+        'token_usage': token_cost_data
     }
 
     if progress_callback:
         progress_callback("Complete!", 1.0)
 
     return results
+
+
+# ==========================================
+# MAIN ENTRY POINT FOR TESTING
+# ==========================================
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run Multi-Agent Debate on a paper")
+    parser.add_argument("paper_file", help="Path to paper text file")
+    parser.add_argument("--paper-type", choices=["empirical", "theoretical", "policy"],
+                        help="Type of paper for persona selection guidance")
+    parser.add_argument("--custom-context", help="Custom evaluation context/priorities")
+    parser.add_argument("--output", default="debate_results.json",
+                        help="Output file for results (default: debate_results.json)")
+
+    args = parser.parse_args()
+
+    # Read paper
+    with open(args.paper_file, 'r', encoding='utf-8') as f:
+        paper_text = f.read()
+
+    # Progress callback
+    def progress(msg, pct):
+        print(f"[{int(pct*100):3d}%] {msg}")
+
+    # Run debate
+    print(f"\n{'='*60}")
+    print("Multi-Agent Debate - Standalone Version")
+    print(f"{'='*60}\n")
+    print(f"Paper: {args.paper_file}")
+    print(f"Paper Type: {args.paper_type or 'Auto-detect'}")
+    print(f"Output: {args.output}\n")
+
+    results = asyncio.run(execute_debate_pipeline(
+        paper_text,
+        progress_callback=progress,
+        paper_type=args.paper_type,
+        custom_context=args.custom_context
+    ))
+
+    # Save results
+    with open(args.output, 'w', encoding='utf-8') as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+
+    print(f"\n{'='*60}")
+    print("RESULTS SUMMARY")
+    print(f"{'='*60}")
+    print(f"Selected Personas: {', '.join(results['round_0']['selected_personas'])}")
+    print(f"Weights: {results['round_0']['weights']}")
+    print(f"\nConsensus Score: {results['consensus']['weighted_score']:.3f}")
+    print(f"Final Decision: {results['consensus']['decision']}")
+    print(f"\nRuntime: {results['metadata']['total_runtime_formatted']}")
+    print(f"Total Cost: ${results['metadata']['token_usage']['cost_usd']['total']:.4f}")
+    print(f"\nFull results saved to: {args.output}")
