@@ -1,8 +1,10 @@
 requests
 pandas
-tiktoken
+pyarrow<16.0,>=7.0  # Pinned to use pre-built wheels (avoid CMake 3.25+ requirement)
+tiktoken==0.7.0  # Pinned to use pre-built wheels (avoid Rust compiler requirement)
 pdfplumber
 streamlit
 python-dotenv
 Pillow
 pytesseract  # Optional: for OCR support in region fixer
+PyYAML  # For config file parsing
