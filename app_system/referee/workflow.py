@@ -733,6 +733,47 @@ The system operates in **5 sequential rounds**:
 
         cost_df = pd.DataFrame(cost_data)
 
+        # Create quote validation sheet (if available)
+        quote_validation_df = None
+        quote_val_meta = metadata.get('quote_validation', {})
+        if quote_val_meta.get('enabled'):
+            quote_data = {
+                'Round': [],
+                'Persona': [],
+                'Quote Text': [],
+                'Is Valid': [],
+                'Similarity Score': [],
+                'Is Mathematical': [],
+                'Threshold Used': []
+            }
+
+            # Process Round 1 validation
+            r1_validation = results.get('round_1_quote_validation', {})
+            for persona, val_result in r1_validation.items():
+                for quote in val_result.get('quotes', []):
+                    quote_data['Round'].append('Round 1')
+                    quote_data['Persona'].append(persona)
+                    quote_data['Quote Text'].append(quote['text'][:200] + ('...' if len(quote['text']) > 200 else ''))
+                    quote_data['Is Valid'].append('Yes' if quote['is_valid'] else 'No')
+                    quote_data['Similarity Score'].append(f"{quote['similarity_score']:.1f}%")
+                    quote_data['Is Mathematical'].append('Yes' if quote['is_mathematical'] else 'No')
+                    quote_data['Threshold Used'].append(f"{quote['threshold_used']}%")
+
+            # Process Round 2C validation
+            r2c_validation = results.get('round_2c_quote_validation', {})
+            for persona, val_result in r2c_validation.items():
+                for quote in val_result.get('quotes', []):
+                    quote_data['Round'].append('Round 2C')
+                    quote_data['Persona'].append(persona)
+                    quote_data['Quote Text'].append(quote['text'][:200] + ('...' if len(quote['text']) > 200 else ''))
+                    quote_data['Is Valid'].append('Yes' if quote['is_valid'] else 'No')
+                    quote_data['Similarity Score'].append(f"{quote['similarity_score']:.1f}%")
+                    quote_data['Is Mathematical'].append('Yes' if quote['is_mathematical'] else 'No')
+                    quote_data['Threshold Used'].append(f"{quote['threshold_used']}%")
+
+            if quote_data['Round']:  # Only create if we have data
+                quote_validation_df = pd.DataFrame(quote_data)
+
         # Write to Excel
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -743,6 +784,10 @@ The system operates in **5 sequential rounds**:
                 cost_df.to_excel(writer, sheet_name='Cost Tracking', index=False)
             else:
                 cost_df.to_excel(writer, sheet_name='Cost Tracking', index=False)
+
+            # Add quote validation sheet if available
+            if quote_validation_df is not None:
+                quote_validation_df.to_excel(writer, sheet_name='Quote Validation', index=False)
 
             # Auto-adjust column widths
             for sheet_name in writer.sheets:
@@ -1198,6 +1243,64 @@ Retry Delay: {metadata.get('retry_delay_seconds', 'N/A')}s""", language="text")
 End Time: {metadata.get('end_time', 'N/A')}
 Total Runtime: {metadata.get('total_runtime_formatted', 'N/A')}
 ({metadata.get('total_runtime_seconds', 'N/A')} seconds)""", language="text")
+
+            # Quote Validation Results
+            quote_val_meta = metadata.get('quote_validation', {})
+            if quote_val_meta.get('enabled'):
+                st.markdown("---")
+                st.subheader("🔍 Quote Validation")
+
+                col_q1, col_q2 = st.columns(2)
+
+                with col_q1:
+                    st.markdown("**Round 1 Validation:**")
+                    r1_summary = quote_val_meta.get('round_1', {})
+                    if r1_summary and 'error' not in r1_summary:
+                        total = r1_summary.get('total_quotes_found', 0)
+                        valid = r1_summary.get('valid_quotes', 0)
+                        invalid = r1_summary.get('invalid_quotes', 0)
+                        rate = r1_summary.get('validation_rate', 0)
+
+                        st.code(f"""Total Quotes: {total}
+Valid: {valid}
+Invalid: {invalid}
+Validation Rate: {rate:.1f}%""", language="text")
+
+                        if invalid > 0:
+                            with st.expander("⚠️ View Unverified Quotes", expanded=False):
+                                for detail in r1_summary.get('invalid_quote_details', []):
+                                    st.markdown(f"**{detail['persona']}** (Score: {detail['similarity_score']:.1f}%)")
+                                    st.text(detail['quote'])
+                                    st.markdown("---")
+                    else:
+                        st.warning("Validation unavailable or failed")
+
+                with col_q2:
+                    st.markdown("**Round 2C Validation:**")
+                    r2c_summary = quote_val_meta.get('round_2c', {})
+                    if r2c_summary and 'error' not in r2c_summary:
+                        total = r2c_summary.get('total_quotes_found', 0)
+                        valid = r2c_summary.get('valid_quotes', 0)
+                        invalid = r2c_summary.get('invalid_quotes', 0)
+                        rate = r2c_summary.get('validation_rate', 0)
+
+                        st.code(f"""Total Quotes: {total}
+Valid: {valid}
+Invalid: {invalid}
+Validation Rate: {rate:.1f}%""", language="text")
+
+                        if invalid > 0:
+                            with st.expander("⚠️ View Unverified Quotes", expanded=False):
+                                for detail in r2c_summary.get('invalid_quote_details', []):
+                                    st.markdown(f"**{detail['persona']}** (Score: {detail['similarity_score']:.1f}%)")
+                                    st.text(detail['quote'])
+                                    st.markdown("---")
+                    else:
+                        st.warning("Validation unavailable or failed")
+
+                # Note about fuzzy matching
+                if not r1_summary.get('fuzzy_matching_available', False):
+                    st.info("ℹ️ **Note:** Fuzzy matching not available. Install thefuzz for improved validation: `pip install thefuzz python-Levenshtein`")
 
             # Cost and Token Usage
             if 'token_usage' in metadata:

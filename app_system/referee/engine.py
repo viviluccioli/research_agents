@@ -160,6 +160,17 @@ DEBATE_PROMPTS = {
 }
 
 # ==========================================
+# QUOTE VALIDATION
+# ==========================================
+def should_enable_quote_validation() -> bool:
+    """
+    Check if quote validation should be enabled.
+    Defaults to True. Can be disabled by setting DISABLE_QUOTE_VALIDATION env var.
+    """
+    import os
+    return os.environ.get('DISABLE_QUOTE_VALIDATION', '').lower() != 'true'
+
+# ==========================================
 # ORCHESTRATION FUNCTIONS
 # ==========================================
 async def call_llm_async(
@@ -644,6 +655,23 @@ async def execute_debate_pipeline(
         progress_callback("Round 1: Independent Evaluation", 0.15)
     results['round_1'] = await run_round_1(active_personas, paper_text, custom_context)
 
+    # Validate quotes in Round 1 reports
+    if should_enable_quote_validation():
+        if progress_callback:
+            progress_callback("Validating Round 1 quotes...", 0.25)
+        try:
+            from referee._utils.quote_validator import validate_quotes_in_reports, get_validation_summary
+            results['round_1_quote_validation'] = validate_quotes_in_reports(
+                results['round_1'],
+                paper_text
+            )
+            results['round_1_validation_summary'] = get_validation_summary(results['round_1_quote_validation'])
+            print(f"[Round 1] Quote validation: {results['round_1_validation_summary']['valid_quotes']}/{results['round_1_validation_summary']['total_quotes_found']} quotes verified")
+        except Exception as e:
+            print(f"[Round 1] Quote validation failed: {e}")
+            results['round_1_quote_validation'] = None
+            results['round_1_validation_summary'] = {'error': str(e)}
+
     # Round 2A: Cross-Examination
     if progress_callback:
         progress_callback("Round 2A: Cross-Examination", 0.35)
@@ -665,6 +693,23 @@ async def execute_debate_pipeline(
         paper_text,
         custom_context
     )
+
+    # Validate quotes in Round 2C reports
+    if should_enable_quote_validation():
+        if progress_callback:
+            progress_callback("Validating Round 2C quotes...", 0.85)
+        try:
+            from referee._utils.quote_validator import validate_quotes_in_reports, get_validation_summary
+            results['round_2c_quote_validation'] = validate_quotes_in_reports(
+                results['round_2c'],
+                paper_text
+            )
+            results['round_2c_validation_summary'] = get_validation_summary(results['round_2c_quote_validation'])
+            print(f"[Round 2C] Quote validation: {results['round_2c_validation_summary']['valid_quotes']}/{results['round_2c_validation_summary']['total_quotes_found']} quotes verified")
+        except Exception as e:
+            print(f"[Round 2C] Quote validation failed: {e}")
+            results['round_2c_quote_validation'] = None
+            results['round_2c_validation_summary'] = {'error': str(e)}
 
     # Calculate consensus before Round 3
     results['consensus'] = calculate_consensus(results['round_2c'], selection_data)
@@ -700,6 +745,13 @@ async def execute_debate_pipeline(
     except Exception as e:
         prompt_versions['error'] = f'Could not load prompt versions: {e}'
 
+    # Add quote validation to metadata
+    quote_validation_meta = {
+        'enabled': should_enable_quote_validation(),
+        'round_1': results.get('round_1_validation_summary', {}),
+        'round_2c': results.get('round_2c_validation_summary', {})
+    }
+
     results['metadata'] = {
         'start_time': start_time.strftime("%Y-%m-%d %H:%M:%S"),
         'end_time': end_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -712,7 +764,8 @@ async def execute_debate_pipeline(
         'max_retries': 3,  # From single_query default
         'retry_delay_seconds': 5,  # From single_query default
         'prompt_versions': prompt_versions,
-        'token_usage': token_cost_data  # Add full token and cost data
+        'token_usage': token_cost_data,  # Add full token and cost data
+        'quote_validation': quote_validation_meta  # Add quote validation stats
     }
 
     if progress_callback:

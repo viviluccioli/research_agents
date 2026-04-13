@@ -6,5 +6,17 @@ the main referee workflow. These are internal implementation details.
 """
 
 from referee._utils.summarizer import summarize_all_rounds
+from referee._utils.quote_validator import (
+    validate_quotes_in_reports,
+    validate_quotes_in_report,
+    get_validation_summary,
+    mark_unverified_quotes_in_text
+)
 
-__all__ = ['summarize_all_rounds']
+__all__ = [
+    'summarize_all_rounds',
+    'validate_quotes_in_reports',
+    'validate_quotes_in_report',
+    'get_validation_summary',
+    'mark_unverified_quotes_in_text'
+]

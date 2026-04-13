@@ -271,7 +271,8 @@ referee/
 ├── workflow.py          # ⭐ Main production UI (RefereeWorkflow)
 ├── engine.py            # ⭐ Debate orchestration (execute_debate_pipeline)
 ├── _utils/              # 🔧 Internal helpers
-│   └── summarizer.py    # LLM summarization utilities
+│   ├── summarizer.py    # LLM summarization utilities
+│   └── quote_validator.py  # Quote verification (prevent hallucinations)
 └── _archived/           # 📦 Archived alternate implementations
     └── full_output_ui.py  # Full verbose UI (not main code path)
 ```
@@ -284,6 +285,14 @@ referee/
   - **Round 0**: LLM selects 3 of 5 personas (Theorist, Empiricist, Historian, Visionary, Policymaker) and assigns weights summing to 1.0.
   - **Rounds 1, 2A, 2B, 2C**: `asyncio.gather()` runs all selected personas in parallel per round. Each persona receives only the context appropriate for its round (peer reports, Q&A transcript, full debate transcript).
   - **Round 3**: Editor computes weighted consensus (`PASS=1.0, REVISE=0.5, FAIL=0.0`; thresholds: >0.75 → ACCEPT, 0.40–0.75 → RESUBMIT, <0.40 → REJECT) and writes the final referee report.
+
+**Quote Validation** (`_utils/quote_validator.py`): Automatically validates quotes in persona reports to prevent hallucinations. Validates after Round 1 and Round 2C using fuzzy string matching (thefuzz library). Features:
+- Extracts quotes from reports (double/single quotes, blockquotes, statement patterns)
+- Uses adaptive thresholds: 95% for mathematical content, 85% for prose
+- Results shown in UI metadata section and Excel "Quote Validation" sheet
+- **Disable**: Set `DISABLE_QUOTE_VALIDATION=true` in environment or `.env`
+- **Dependencies**: `pip install thefuzz python-Levenshtein` (optional but recommended)
+- See `docs/quote_validation.md` for full documentation
 
 **To add a new persona**: add to `SYSTEM_PROMPTS` in `referee/engine.py` (include the `_ERROR_SEVERITY_GUIDE` block), update the persona list in `SELECTION_PROMPT`, and add the icon/CSS class in `referee/workflow.py`.
 
