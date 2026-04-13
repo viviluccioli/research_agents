@@ -10,6 +10,7 @@ import asyncio
 import datetime
 import json
 import re
+import hashlib
 from typing import Dict, List, Optional
 from pathlib import Path
 import yaml
@@ -613,7 +614,10 @@ async def execute_debate_pipeline(
     paper_type: Optional[str] = None,
     custom_context: Optional[str] = None,
     manual_personas: Optional[List[str]] = None,
-    manual_weights: Optional[Dict[str, float]] = None
+    manual_weights: Optional[Dict[str, float]] = None,
+    use_cache: bool = True,
+    cache_dir: Optional[Path] = None,
+    force_refresh: bool = False
 ):
     """
     Orchestrates the entire multi-agent debate workflow with endogenous persona selection.
@@ -628,32 +632,118 @@ async def execute_debate_pipeline(
         custom_context: Optional user-provided evaluation priorities and focus areas
         manual_personas: Optional list of manually selected personas (2-5 personas)
         manual_weights: Optional dict of manually specified weights for manual_personas
+        use_cache: Whether to use cached results if available (default: True)
+        cache_dir: Optional custom cache directory (default: .referee_cache)
+        force_refresh: Force recomputation even if cache exists (default: False)
 
     Returns:
         Dictionary containing all round results, selection data, and final decision
     """
+    # Import cache utilities
+    from referee._utils.cache import (
+        compute_cache_key,
+        save_round_results,
+        load_round_results,
+        check_cache_status
+    )
+
     # Capture start time
     start_time = datetime.datetime.now()
 
     results = {}
 
+    # Initialize cache tracking
+    cache_hits = {}  # Track which rounds were cached
+    cache_key_round0 = None  # Cache key before persona selection
+    cache_key_final = None   # Cache key after persona selection
+
+    # Compute initial cache key (without personas for Round 0)
+    if use_cache and not force_refresh:
+        cache_key_round0 = compute_cache_key(
+            paper_text=paper_text,
+            model_name=MODEL_PRIMARY,
+            paper_type=paper_type,
+            custom_context=custom_context,
+            selected_personas=manual_personas,
+            weights=manual_weights
+        )
+
     # Round 0: Persona Selection
     if progress_callback:
         progress_callback("Round 0: Selecting Personas", 0.05)
-    selection_data = await run_round_0_selection(
-        paper_text,
-        paper_type=paper_type,
-        custom_context=custom_context,
-        manual_personas=manual_personas,
-        manual_weights=manual_weights
-    )
+
+    # Try to load Round 0 from cache
+    if use_cache and not force_refresh and cache_key_round0:
+        cached_round0 = load_round_results(cache_key_round0, 0, cache_dir)
+        if cached_round0:
+            selection_data = cached_round0
+            cache_hits['round_0'] = True
+            print("[Round 0] Cache HIT - using cached persona selection")
+        else:
+            cache_hits['round_0'] = False
+            selection_data = None
+    else:
+        cache_hits['round_0'] = False
+        selection_data = None
+
+    # Run Round 0 if not cached
+    if selection_data is None:
+        selection_data = await run_round_0_selection(
+            paper_text,
+            paper_type=paper_type,
+            custom_context=custom_context,
+            manual_personas=manual_personas,
+            manual_weights=manual_weights
+        )
+
+        # Save Round 0 to cache
+        if use_cache and cache_key_round0:
+            metadata = {
+                'timestamp': start_time.isoformat(),
+                'paper_hash': hashlib.sha256(paper_text.encode()).hexdigest()[:16],
+                'model': MODEL_PRIMARY,
+                'paper_type': paper_type,
+                'custom_context_provided': bool(custom_context),
+                'manual_selection': bool(manual_personas)
+            }
+            save_round_results(cache_key_round0, 0, selection_data, cache_dir, metadata)
+
     active_personas = selection_data["selected_personas"]
     results['round_0'] = selection_data
+
+    # Compute final cache key with selected personas and weights
+    if use_cache:
+        cache_key_final = compute_cache_key(
+            paper_text=paper_text,
+            selected_personas=active_personas,
+            weights=selection_data["weights"],
+            model_name=MODEL_PRIMARY,
+            paper_type=paper_type,
+            custom_context=custom_context
+        )
+        print(f"[Cache] Final cache key: {cache_key_final[:16]}...")
 
     # Round 1: Independent Evaluation
     if progress_callback:
         progress_callback("Round 1: Independent Evaluation", 0.15)
-    results['round_1'] = await run_round_1(active_personas, paper_text, custom_context)
+
+    # Try to load Round 1 from cache
+    if use_cache and not force_refresh and cache_key_final:
+        cached_round1 = load_round_results(cache_key_final, 1, cache_dir)
+        if cached_round1:
+            results['round_1'] = cached_round1
+            cache_hits['round_1'] = True
+            print("[Round 1] Cache HIT - using cached reports")
+        else:
+            cache_hits['round_1'] = False
+            results['round_1'] = await run_round_1(active_personas, paper_text, custom_context)
+            # Save to cache
+            save_round_results(cache_key_final, 1, results['round_1'], cache_dir)
+    else:
+        cache_hits['round_1'] = False
+        results['round_1'] = await run_round_1(active_personas, paper_text, custom_context)
+        if use_cache and cache_key_final:
+            save_round_results(cache_key_final, 1, results['round_1'], cache_dir)
 
     # Validate quotes in Round 1 reports
     if should_enable_quote_validation():
@@ -675,24 +765,79 @@ async def execute_debate_pipeline(
     # Round 2A: Cross-Examination
     if progress_callback:
         progress_callback("Round 2A: Cross-Examination", 0.35)
-    results['round_2a'] = await run_round_2a(results['round_1'], active_personas, paper_text, custom_context)
+
+    # Try to load Round 2A from cache
+    if use_cache and not force_refresh and cache_key_final:
+        cached_round2a = load_round_results(cache_key_final, "2a", cache_dir)
+        if cached_round2a:
+            results['round_2a'] = cached_round2a
+            cache_hits['round_2a'] = True
+            print("[Round 2A] Cache HIT - using cached cross-examination")
+        else:
+            cache_hits['round_2a'] = False
+            results['round_2a'] = await run_round_2a(results['round_1'], active_personas, paper_text, custom_context)
+            save_round_results(cache_key_final, "2a", results['round_2a'], cache_dir)
+    else:
+        cache_hits['round_2a'] = False
+        results['round_2a'] = await run_round_2a(results['round_1'], active_personas, paper_text, custom_context)
+        if use_cache and cache_key_final:
+            save_round_results(cache_key_final, "2a", results['round_2a'], cache_dir)
 
     # Round 2B: Direct Examination
     if progress_callback:
         progress_callback("Round 2B: Answering Questions", 0.55)
-    results['round_2b'] = await run_round_2b(results['round_2a'], active_personas, paper_text, custom_context)
+
+    # Try to load Round 2B from cache
+    if use_cache and not force_refresh and cache_key_final:
+        cached_round2b = load_round_results(cache_key_final, "2b", cache_dir)
+        if cached_round2b:
+            results['round_2b'] = cached_round2b
+            cache_hits['round_2b'] = True
+            print("[Round 2B] Cache HIT - using cached answers")
+        else:
+            cache_hits['round_2b'] = False
+            results['round_2b'] = await run_round_2b(results['round_2a'], active_personas, paper_text, custom_context)
+            save_round_results(cache_key_final, "2b", results['round_2b'], cache_dir)
+    else:
+        cache_hits['round_2b'] = False
+        results['round_2b'] = await run_round_2b(results['round_2a'], active_personas, paper_text, custom_context)
+        if use_cache and cache_key_final:
+            save_round_results(cache_key_final, "2b", results['round_2b'], cache_dir)
 
     # Round 2C: Final Amendments
     if progress_callback:
         progress_callback("Round 2C: Final Amendments", 0.75)
-    results['round_2c'] = await run_round_2c(
-        results['round_1'],
-        results['round_2a'],
-        results['round_2b'],
-        active_personas,
-        paper_text,
-        custom_context
-    )
+
+    # Try to load Round 2C from cache
+    if use_cache and not force_refresh and cache_key_final:
+        cached_round2c = load_round_results(cache_key_final, "2c", cache_dir)
+        if cached_round2c:
+            results['round_2c'] = cached_round2c
+            cache_hits['round_2c'] = True
+            print("[Round 2C] Cache HIT - using cached amendments")
+        else:
+            cache_hits['round_2c'] = False
+            results['round_2c'] = await run_round_2c(
+                results['round_1'],
+                results['round_2a'],
+                results['round_2b'],
+                active_personas,
+                paper_text,
+                custom_context
+            )
+            save_round_results(cache_key_final, "2c", results['round_2c'], cache_dir)
+    else:
+        cache_hits['round_2c'] = False
+        results['round_2c'] = await run_round_2c(
+            results['round_1'],
+            results['round_2a'],
+            results['round_2b'],
+            active_personas,
+            paper_text,
+            custom_context
+        )
+        if use_cache and cache_key_final:
+            save_round_results(cache_key_final, "2c", results['round_2c'], cache_dir)
 
     # Validate quotes in Round 2C reports
     if should_enable_quote_validation():
@@ -717,7 +862,23 @@ async def execute_debate_pipeline(
     # Round 3: Editor Decision
     if progress_callback:
         progress_callback("Round 3: Editor Decision", 0.90)
-    results['final_decision'] = await run_round_3(results['round_2c'], selection_data)
+
+    # Try to load Round 3 from cache
+    if use_cache and not force_refresh and cache_key_final:
+        cached_round3 = load_round_results(cache_key_final, 3, cache_dir)
+        if cached_round3:
+            results['final_decision'] = cached_round3
+            cache_hits['round_3'] = True
+            print("[Round 3] Cache HIT - using cached editor decision")
+        else:
+            cache_hits['round_3'] = False
+            results['final_decision'] = await run_round_3(results['round_2c'], selection_data)
+            save_round_results(cache_key_final, 3, results['final_decision'], cache_dir)
+    else:
+        cache_hits['round_3'] = False
+        results['final_decision'] = await run_round_3(results['round_2c'], selection_data)
+        if use_cache and cache_key_final:
+            save_round_results(cache_key_final, 3, results['final_decision'], cache_dir)
 
     # Capture end time and add metadata
     end_time = datetime.datetime.now()
@@ -752,6 +913,19 @@ async def execute_debate_pipeline(
         'round_2c': results.get('round_2c_validation_summary', {})
     }
 
+    # Calculate cache statistics
+    total_rounds = 6  # Round 0, 1, 2A, 2B, 2C, 3
+    cached_rounds = sum(1 for hit in cache_hits.values() if hit)
+    cache_hit_rate = cached_rounds / total_rounds if total_rounds > 0 else 0.0
+
+    # Estimate cost savings from cache
+    if cached_rounds > 0:
+        # Rough estimate: each round costs ~15-20% of total
+        estimated_cost_per_round = token_cost_data['cost_usd']['total'] / total_rounds
+        estimated_savings = estimated_cost_per_round * cached_rounds
+    else:
+        estimated_savings = 0.0
+
     results['metadata'] = {
         'start_time': start_time.strftime("%Y-%m-%d %H:%M:%S"),
         'end_time': end_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -765,7 +939,16 @@ async def execute_debate_pipeline(
         'retry_delay_seconds': 5,  # From single_query default
         'prompt_versions': prompt_versions,
         'token_usage': token_cost_data,  # Add full token and cost data
-        'quote_validation': quote_validation_meta  # Add quote validation stats
+        'quote_validation': quote_validation_meta,  # Add quote validation stats
+        'cache': {
+            'enabled': use_cache,
+            'cache_key': cache_key_final,
+            'cache_hits': cache_hits,
+            'total_rounds': total_rounds,
+            'cached_rounds': cached_rounds,
+            'cache_hit_rate': round(cache_hit_rate, 2),
+            'estimated_savings_usd': round(estimated_savings, 4) if not force_refresh else 0.0
+        }
     }
 
     if progress_callback:

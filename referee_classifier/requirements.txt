@@ -1,0 +1,22 @@
+# Referee Classifier Requirements
+
+# Core dependencies (shared with main app_system)
+anthropic>=0.40.0  # Claude API with extended thinking support
+pandas>=2.0.0  # Data processing for batch mode
+openpyxl>=3.1.0  # Excel export
+pyyaml>=6.0  # Configuration files
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Optional (for enhanced features)
+# These are from the main app_system if you want to integrate with it
+# requests>=2.31.0  # For custom API endpoints
+# tiktoken>=0.5.0  # Token counting
+# pdfplumber>=0.10.0  # PDF processing (if adding PDF support)
+# filelock>=3.12.0  # For caching (if porting cache system)
+
+# Development
+black>=23.0.0  # Code formatting
+mypy>=1.5.0  # Type checking

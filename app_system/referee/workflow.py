@@ -416,6 +416,84 @@ The system operates in **5 sequential rounds**:
 
             st.markdown("---")
 
+            # Cache controls
+            st.markdown("#### 💾 Cache Settings")
+
+            col_cache, col_clear = st.columns([3, 1])
+
+            with col_cache:
+                use_cache = st.checkbox(
+                    "📦 Use cached results (if available)",
+                    value=True,
+                    help="Enable caching to reuse results from previous runs with the same paper and configuration. Can save $1.50-2.00 per run."
+                )
+
+                force_refresh = st.checkbox(
+                    "🔄 Force refresh (ignore cache)",
+                    value=False,
+                    help="Run all rounds fresh even if cached results exist. Useful for testing prompt changes.",
+                    disabled=not use_cache
+                )
+
+            with col_clear:
+                from referee._utils.cache import compute_cache_key, clear_cache_for_paper, get_cache_stats
+
+                # Compute cache key for this paper
+                cache_key = compute_cache_key(
+                    paper_text=paper_text,
+                    selected_personas=manual_personas,
+                    weights=manual_weights,
+                    model_name="claude-3-7-sonnet",  # Approximate from config
+                    paper_type=paper_type,
+                    custom_context=custom_context if custom_context and custom_context.strip() else None
+                )
+
+                if st.button("🗑️ Clear Cache", help="Clear cached results for this specific paper", use_container_width=True):
+                    if clear_cache_for_paper(cache_key):
+                        st.success("✅ Cache cleared!")
+                    else:
+                        st.info("ℹ️ No cache to clear")
+                    st.rerun()
+
+            # Show cache stats
+            if use_cache:
+                from referee._utils.cache import check_cache_status
+                cache_status = check_cache_status(cache_key)
+                cached_rounds = [k for k, v in cache_status.items() if v]
+
+                if cached_rounds:
+                    st.info(f"💾 **Cache available** for: {', '.join(cached_rounds)}")
+                else:
+                    st.info("💾 **No cached results** - first run will be cached for future use")
+
+            # Show global cache statistics
+            with st.expander("📊 Global Cache Statistics"):
+                stats = get_cache_stats()
+                col_stat1, col_stat2, col_stat3 = st.columns(3)
+                with col_stat1:
+                    st.metric("Cached Papers", stats['total_entries'])
+                with col_stat2:
+                    st.metric("Cache Size", f"{stats['total_size_mb']} MB")
+                with col_stat3:
+                    st.metric("Cache Location", "📁")
+
+                st.caption(f"Location: `{stats['cache_dir']}`")
+
+                from referee._utils.cache import clear_cache
+                col_clear_old, col_clear_all = st.columns(2)
+                with col_clear_old:
+                    if st.button("🧹 Clear Old Cache (>30 days)", use_container_width=True):
+                        removed, total = clear_cache(older_than_days=30)
+                        st.success(f"✅ Removed {removed}/{total} old entries")
+                        st.rerun()
+                with col_clear_all:
+                    if st.button("⚠️ Clear All Cache", use_container_width=True, type="secondary"):
+                        removed, total = clear_cache(older_than_days=0)
+                        st.success(f"✅ Removed all {removed} entries")
+                        st.rerun()
+
+            st.markdown("---")
+
             col_run, col_reset = st.columns([3, 1])
 
             with col_run:
@@ -453,7 +531,9 @@ The system operates in **5 sequential rounds**:
                                 paper_type=paper_type,
                                 custom_context=custom_context if custom_context and custom_context.strip() else None,
                                 manual_personas=manual_personas,
-                                manual_weights=manual_weights
+                                manual_weights=manual_weights,
+                                use_cache=use_cache,
+                                force_refresh=force_refresh
                             )
                         )
 
@@ -818,6 +898,8 @@ The system operates in **5 sequential rounds**:
         # Display cost estimate prominently
         metadata = results.get('metadata', {})
         token_usage = metadata.get('token_usage', {})
+        cache_info = metadata.get('cache', {})
+
         if token_usage:
             cost_data = token_usage.get('cost_usd', {})
             llm_calls = token_usage.get('llm_calls', {})
@@ -825,8 +907,38 @@ The system operates in **5 sequential rounds**:
             total_calls = llm_calls.get('total', 0)
 
             mode_text = "with summarization" if has_summaries else "full output only"
-            st.info(f"💰 **Estimated Cost:** ${total_cost:.4f} USD ({total_calls} LLM calls, "
-                   f"{token_usage.get('total_tokens', 0):,} total tokens) - {mode_text}")
+
+            # Show cost with cache savings if applicable
+            if cache_info.get('enabled') and cache_info.get('cached_rounds', 0) > 0:
+                cached_rounds = cache_info.get('cached_rounds', 0)
+                total_rounds = cache_info.get('total_rounds', 6)
+                savings = cache_info.get('estimated_savings_usd', 0)
+                cache_hit_rate = cache_info.get('cache_hit_rate', 0)
+
+                st.success(
+                    f"💰 **Estimated Cost:** ${total_cost:.4f} USD ({total_calls} LLM calls, "
+                    f"{token_usage.get('total_tokens', 0):,} total tokens) - {mode_text}\n\n"
+                    f"💾 **Cache:** {cached_rounds}/{total_rounds} rounds cached ({cache_hit_rate*100:.0f}% hit rate) — "
+                    f"Saved ~${savings:.4f} USD"
+                )
+            else:
+                st.info(f"💰 **Estimated Cost:** ${total_cost:.4f} USD ({total_calls} LLM calls, "
+                       f"{token_usage.get('total_tokens', 0):,} total tokens) - {mode_text}")
+
+        # Display cache details in expander
+        if cache_info.get('enabled'):
+            with st.expander("💾 Cache Details"):
+                cache_hits = cache_info.get('cache_hits', {})
+
+                st.markdown("**Cache Status by Round:**")
+                for round_name, is_hit in cache_hits.items():
+                    emoji = "✅" if is_hit else "❌"
+                    status = "HIT (cached)" if is_hit else "MISS (computed)"
+                    st.markdown(f"- {emoji} **{round_name}**: {status}")
+
+                if cache_info.get('cache_key'):
+                    st.markdown(f"\n**Cache Key:** `{cache_info['cache_key'][:32]}...`")
+                    st.caption("This key uniquely identifies the paper, personas, weights, and model configuration.")
 
         # Icon mapping for all personas
         icon_map = {

@@ -1,0 +1,136 @@
+# Referee Classifier Configuration
+
+# Classifier settings
+classifier:
+  model: "claude-sonnet-4-20250514"  # Anthropic model for classification
+  thinking_budget: 2000  # Extended thinking tokens
+  confidence_threshold: 0.7  # Minimum confidence for using adaptive weights
+  max_text_length: 3000  # Maximum chars to send to LLM (truncated from start)
+  use_llm_by_default: true  # Whether to use LLM or keyword-only by default
+
+# Persona base weights (before adaptation)
+personas:
+  Theorist: 0.2
+  Empiricist: 0.2
+  Policymaker: 0.2
+  Historian: 0.2
+  Visionary: 0.2
+
+# Classification thresholds
+thresholds:
+  math_intensity:
+    low: 5    # < 5 equations
+    high: 15  # >= 15 equations
+  confidence_min: 0.7  # Minimum confidence to use adaptive weights
+  keyword_matches:
+    min_confident: 5  # Minimum keyword matches for high confidence
+
+# Keyword patterns for baseline detection
+keywords:
+  theory:
+    - theorem
+    - proof
+    - proposition
+    - lemma
+    - equilibrium
+    - formal model
+    - axiom
+    - corollary
+    - mathematical framework
+    - derivation
+    - analytical solution
+
+  empirical:
+    - regression
+    - dataset
+    - panel data
+    - estimation
+    - coefficient
+    - empirical analysis
+    - statistical test
+    - standard error
+    - p-value
+    - estimator
+    - sample
+
+  survey:
+    - literature review
+    - meta-analysis
+    - comprehensive overview
+    - survey
+    - synthesis of
+    - state of the art
+    - recent developments
+
+  policy:
+    - policy recommendation
+    - regulatory
+    - governance
+    - reform
+    - policy implication
+    - welfare
+    - policy analysis
+
+# Econometric methods detection
+econometric_methods:
+  - name: regression
+    pattern: "(?:OLS|regression|least squares)"
+  - name: VAR
+    pattern: "(?:VAR|vector autoregression)"
+  - name: ARIMA
+    pattern: "(?:ARIMA|autoregressive)"
+  - name: GMM
+    pattern: "(?:GMM|generalized method of moments)"
+  - name: DiD
+    pattern: "(?:difference-in-differences|DiD|diff-in-diff)"
+  - name: RDD
+    pattern: "(?:regression discontinuity|RDD)"
+  - name: IV
+    pattern: "(?:instrumental variable|2SLS|IV estimation)"
+  - name: propensity_score
+    pattern: "(?:propensity score|matching)"
+  - name: panel
+    pattern: "(?:panel data|fixed effects|random effects)"
+  - name: time_series
+    pattern: "(?:time series|GARCH|cointegration)"
+  - name: bayesian
+    pattern: "(?:Bayesian|MCMC|posterior)"
+  - name: machine_learning
+    pattern: "(?:random forest|neural network|gradient boosting|machine learning)"
+
+# Adaptive weight rules
+# These are encoded in referee/personas.py but documented here for reference
+weight_adjustment_rules:
+  theory_high_math:
+    Theorist: 0.5
+    Historian: 0.25
+    Visionary: 0.25
+    Empiricist: 0.0
+    Policymaker: 0.0
+
+  empirical_heavy_data:
+    Empiricist: 0.5
+    Visionary: 0.25
+    Historian: 0.15
+    Policymaker: 0.1
+    Theorist: 0.0
+
+  survey:
+    Historian: 0.6
+    Visionary: 0.4
+    Empiricist: 0.0
+    Theorist: 0.0
+    Policymaker: 0.0
+
+  policy:
+    Policymaker: 0.4
+    Empiricist: 0.3
+    Historian: 0.2
+    Visionary: 0.1
+    Theorist: 0.0
+
+# Logging settings
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  log_classifications: true
+  log_persona_selection: true

@@ -1,0 +1,96 @@
+A General Equilibrium Model of Economic Growth with Knowledge Accumulation
+
+Abstract
+
+We develop a formal mathematical framework for analyzing economic growth through knowledge accumulation. Our model extends the Solow-Swan framework by explicitly incorporating endogenous technological change. We prove the existence and uniqueness of the balanced growth path equilibrium under standard regularity conditions. The model features diminishing returns to capital but increasing returns to knowledge, leading to sustained long-run growth.
+
+1. Introduction
+
+This paper presents a theoretical model of economic growth with endogenous knowledge accumulation. We build on the seminal work of Romer (1986) and Lucas (1988), providing a more general framework that encompasses previous models as special cases.
+
+2. The Model
+
+Consider an economy with a representative household that maximizes lifetime utility:
+
+(1) U = ∫₀^∞ e^(-ρt) u(c(t)) dt
+
+where ρ > 0 is the discount rate and u(·) is the instantaneous utility function.
+
+Production follows a Cobb-Douglas technology:
+
+(2) Y(t) = K(t)^α (A(t)L(t))^(1-α)
+
+where K is capital, L is labor, A is productivity, and α ∈ (0,1).
+
+Knowledge accumulates according to:
+
+(3) Ȧ(t) = δY(t)^φ A(t)^θ
+
+where δ > 0, φ ∈ (0,1), and θ ∈ (0,1).
+
+3. Equilibrium Analysis
+
+Theorem 1 (Existence of Balanced Growth Path): Under assumptions A1-A5, there exists a unique balanced growth path equilibrium where output, capital, and knowledge all grow at constant rates.
+
+Proof: Define the variables k̃ = K/(AL) and ỹ = Y/(AL). Along a balanced growth path, these variables must be constant. By the capital accumulation equation:
+
+(4) k̃̇ = sf(k̃) - (n + g + δ)k̃
+
+where s is the saving rate, n is population growth, g is the growth rate of A, and δ is depreciation.
+
+At steady state, k̃̇ = 0, which gives:
+
+(5) sf(k̃*) = (n + g + δ)k̃*
+
+This equation has a unique solution k̃* > 0 by the properties of f(·).
+
+From equation (3), the growth rate of A satisfies:
+
+(6) g = δ(ỹ*)^φ / (1 - θ)
+
+Substituting ỹ* = f(k̃*) and solving yields the balanced growth rate. ∎
+
+Proposition 1: The balanced growth rate is increasing in the knowledge accumulation parameter δ and decreasing in the discount rate ρ.
+
+Proposition 2: If θ + φ ≥ 1, the model exhibits explosive growth. If θ + φ < 1, growth is bounded.
+
+Lemma 1: The transition dynamics are characterized by a saddle-path stable manifold.
+
+4. Comparative Statics
+
+We derive several comparative statics results:
+
+(7) ∂g*/∂δ > 0
+(8) ∂g*/∂α < 0
+(9) ∂g*/∂ρ < 0
+
+These results demonstrate that policies encouraging knowledge accumulation raise the long-run growth rate.
+
+5. Welfare Analysis
+
+Corollary 1: Social welfare is maximized when the saving rate equals:
+
+(10) s* = α(1 + θ)/(1 + ρ)
+
+This differs from the golden rule due to knowledge externalities.
+
+6. Extensions
+
+We extend the model to incorporate:
+- Human capital accumulation
+- Multiple sectors
+- Stochastic productivity shocks
+
+Each extension preserves the main theoretical insights while adding realism.
+
+7. Conclusion
+
+This paper develops a general equilibrium model of growth with endogenous knowledge accumulation. We prove existence and uniqueness of the balanced growth path and derive comparative statics. The model provides a rigorous foundation for understanding long-run economic growth.
+
+References
+
+Lucas, R. E. (1988). "On the Mechanics of Economic Development." Journal of Monetary Economics, 22(1), 3-42.
+
+Romer, P. M. (1986). "Increasing Returns and Long-Run Growth." Journal of Political Economy, 94(5), 1002-1037.
+
+Solow, R. M. (1956). "A Contribution to the Theory of Economic Growth." Quarterly Journal of Economics, 70(1), 65-94.
