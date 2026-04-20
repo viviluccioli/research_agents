@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Model Requirements
+
+**CRITICAL**: ALL systems in this repository MUST use **Claude 4.5 Sonnet** (`anthropic.claude-sonnet-4-5-20250929-v1:0`).
+
+- ✅ **Use**: Claude 4.5 Sonnet for ALL API calls
+- ❌ **Do NOT use**: Claude 3.7, Claude 3.5, or any older models
+- The configuration has been updated so that `MODEL_PRIMARY`, `MODEL_SECONDARY`, and `MODEL_TERTIARY` all default to Claude 4.5
+- This applies to:
+  - Referee report system (multi-agent debate)
+  - Section evaluator
+  - All experiments
+  - All utility functions
+
+If you see any references to older models (3.7, 3.5) in code or documentation, they are outdated and should be ignored or updated.
+
 ## Running the app
 
 The app must be run from inside `app_system/` so that imports resolve correctly (all imports use relative paths like `from utils import cm`, `from section_eval import ...`):
@@ -223,7 +238,7 @@ All LLM calls go through a single internal API (Federal Reserve MartinAI, OpenAI
 - **`single_query(prompt)`** — stateless, used by the MAD system. Retries 3× with 5s delay.
 - **`ConversationManager.conv_query(prompt)`** — stateful, used by section eval. Automatically prunes/summarizes old messages when tokens exceed 8000.
 
-Two model slots are configured: `model_selection3` (Claude 3.7 Sonnet, used by `single_query`) and `model_selection` (Claude Sonnet 4.5, used by `safe_query` in section eval).
+**Model configuration**: ALL systems now use **Claude 4.5 Sonnet**. The legacy model aliases (`model_selection`, `model_selection3`) both point to `MODEL_PRIMARY` which is Claude 4.5.
 
 ### Section evaluator (`app_system/section_eval/`)
 
@@ -305,7 +320,7 @@ For significant changes to `app_system/section_eval/` or `app_system/referee/`, 
 ## Key gotchas
 
 - **Import paths**: All packages (`section_eval/`, `referee/`) import from the parent `utils.py` via `from utils import ...`. This only works when Streamlit is launched from `app_system/`. Running from the repo root will break imports. Demo apps in `demos/` add the parent directory to sys.path.
-- **`safe_query` vs `single_query`**: `safe_query` (in `section_eval/utils.py`) bypasses `ConversationManager` and calls the API directly with `model_selection` at temperature 0.3. `single_query` (in `utils.py`) uses `model_selection3` with thinking budget enabled at temperature 1.
+- **`safe_query` vs `single_query`**: Both use **Claude 4.5 Sonnet**. `safe_query` (in `section_eval/utils.py`) bypasses `ConversationManager` and calls the API directly at temperature 0.3. `single_query` (in `utils.py`) has thinking budget enabled and uses temperature 1.
 - **Thinking mode**: `single_query` sends `"thinking": {"type": "enabled", "budget_tokens": 2048}` — temperature must be 1 when this is enabled. `safe_query` does not use thinking mode (temperature 0.3).
 - **Cache prefix**: `SectionEvaluator` uses prefix `"se_cache_v3"`, `SectionEvaluatorApp` uses `"se_v3"`. If you change the result schema, bump these prefixes to avoid stale cache hits.
 - **`fpdf` encoding**: PDF generation encodes text as `latin-1` with `replace` error handling. Unicode characters in paper text will be silently substituted.

@@ -23,6 +23,13 @@ from referee._utils.cache import (
     list_all_cached_papers,
     get_cache_stats
 )
+from referee._utils.deduplicator import (
+    deduplicate_findings,
+    cluster_similar_findings,
+    merge_cluster,
+    identify_cross_references,
+    get_dedup_config
+)
 
 __all__ = [
     'summarize_all_rounds',
@@ -38,5 +45,10 @@ __all__ = [
     'clear_cache',
     'get_cache_metadata',
     'list_all_cached_papers',
-    'get_cache_stats'
+    'get_cache_stats',
+    'deduplicate_findings',
+    'cluster_similar_findings',
+    'merge_cluster',
+    'identify_cross_references',
+    'get_dedup_config'
 ]

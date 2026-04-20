@@ -560,7 +560,7 @@ def calculate_token_usage_and_cost(paper_text: str, results: Dict, num_personas:
 
     total_output_tokens = total_debate_output + total_summary_output
 
-    # Cost calculation (Claude 3.7 Sonnet pricing)
+    # Cost calculation (Claude 4.5 Sonnet pricing)
     # Input: $3.00 per million tokens
     # Output: $15.00 per million tokens
     input_cost_per_million = 3.00
@@ -842,7 +842,7 @@ async def execute_debate_pipeline(
     # Validate quotes in Round 2C reports
     if should_enable_quote_validation():
         if progress_callback:
-            progress_callback("Validating Round 2C quotes...", 0.85)
+            progress_callback("Validating Round 2C quotes...", 0.82)
         try:
             from referee._utils.quote_validator import validate_quotes_in_reports, get_validation_summary
             results['round_2c_quote_validation'] = validate_quotes_in_reports(
@@ -855,6 +855,42 @@ async def execute_debate_pipeline(
             print(f"[Round 2C] Quote validation failed: {e}")
             results['round_2c_quote_validation'] = None
             results['round_2c_validation_summary'] = {'error': str(e)}
+
+    # Round 2.5: Cross-Reference Deduplication
+    if progress_callback:
+        progress_callback("Round 2.5: Deduplicating Findings", 0.87)
+
+    try:
+        from referee._utils.deduplicator import deduplicate_findings, get_dedup_config
+        dedup_config = get_dedup_config()
+
+        if dedup_config['enabled']:
+            print("[Round 2.5] Starting cross-reference deduplication...")
+            dedup_results = deduplicate_findings(
+                reports=results['round_2c'],
+                paper_text=paper_text,
+                similarity_threshold=dedup_config['similarity_threshold'],
+                preserve_distinct=dedup_config['preserve_distinct']
+            )
+
+            results['deduplication'] = dedup_results
+            print(f"[Round 2.5] Deduplication complete: {dedup_results['statistics']['total_findings_before']} → {dedup_results['statistics']['total_findings_after']} findings")
+        else:
+            print("[Round 2.5] Deduplication disabled by configuration")
+            results['deduplication'] = {
+                'deduplicated_findings': [],
+                'statistics': {'enabled': False},
+                'clusters': []
+            }
+    except Exception as e:
+        print(f"[Round 2.5] Deduplication failed: {e}")
+        import traceback
+        traceback.print_exc()
+        results['deduplication'] = {
+            'deduplicated_findings': [],
+            'statistics': {'enabled': True, 'error': str(e)},
+            'clusters': []
+        }
 
     # Calculate consensus before Round 3
     results['consensus'] = calculate_consensus(results['round_2c'], selection_data)
@@ -913,6 +949,17 @@ async def execute_debate_pipeline(
         'round_2c': results.get('round_2c_validation_summary', {})
     }
 
+    # Add deduplication stats to metadata
+    dedup_stats = results.get('deduplication', {}).get('statistics', {})
+    dedup_meta = {
+        'enabled': dedup_stats.get('enabled', False),
+        'total_findings_before': dedup_stats.get('total_findings_before', 0),
+        'total_findings_after': dedup_stats.get('total_findings_after', 0),
+        'clusters_merged': dedup_stats.get('clusters_merged', 0),
+        'reduction_rate': dedup_stats.get('reduction_rate', 0.0),
+        'embeddings_available': dedup_stats.get('embeddings_available', False),
+    }
+
     # Calculate cache statistics
     total_rounds = 6  # Round 0, 1, 2A, 2B, 2C, 3
     cached_rounds = sum(1 for hit in cache_hits.values() if hit)
@@ -940,6 +987,7 @@ async def execute_debate_pipeline(
         'prompt_versions': prompt_versions,
         'token_usage': token_cost_data,  # Add full token and cost data
         'quote_validation': quote_validation_meta,  # Add quote validation stats
+        'deduplication': dedup_meta,  # Add deduplication stats
         'cache': {
             'enabled': use_cache,
             'cache_key': cache_key_final,

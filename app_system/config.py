@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Configuration Management for Research Agents
 
@@ -84,28 +85,42 @@ url_chat_completions = f"{API_BASE}/chat/completions"
 # Model Configuration
 # =============================================================================
 
-# Primary model (used by section evaluator)
+# Primary model (used by section evaluator and all systems)
 MODEL_PRIMARY = get_env_var(
     'MODEL_PRIMARY',
     default='anthropic.claude-sonnet-4-5-20250929-v1:0'
 )
 
-# Secondary model (used by referee debate system)
+# Secondary model (DEPRECATED - now uses Claude 4.5 like primary)
+# Kept for backwards compatibility but defaults to same as PRIMARY
 MODEL_SECONDARY = get_env_var(
     'MODEL_SECONDARY',
-    default='anthropic.claude-3-7-sonnet-20250219-v1:0'
+    default='anthropic.claude-sonnet-4-5-20250929-v1:0'  # Changed from 3.7 to 4.5
 )
 
-# Tertiary model (legacy/backup)
+# Tertiary model (legacy/backup - DEPRECATED)
 MODEL_TERTIARY = get_env_var(
     'MODEL_TERTIARY',
-    default='anthropic.claude-3-5-sonnet-20240620-v1:0'
+    default='anthropic.claude-sonnet-4-5-20250929-v1:0'  # Changed from 3.5 to 4.5
 )
 
 # Backward compatibility aliases (for existing code)
 model_selection = MODEL_PRIMARY
 model_selection3 = MODEL_SECONDARY
 model_selection2 = MODEL_TERTIARY
+
+# =============================================================================
+# PDF Extraction Configuration
+# =============================================================================
+
+# Use PyMuPDF for advanced PDF extraction (figures, better tables)
+# Falls back to pdfplumber if False or if PyMuPDF fails
+USE_PYMUPDF = get_env_var('USE_PYMUPDF', default='true').lower() in ('true', '1', 'yes')
+
+# PyMuPDF extraction parameters
+PYMUPDF_MIN_FIGURE_SIZE = int(get_env_var('PYMUPDF_MIN_FIGURE_SIZE', default='100'))
+PYMUPDF_RESOLUTION_SCALE = float(get_env_var('PYMUPDF_RESOLUTION_SCALE', default='2.0'))
+PYMUPDF_EXTRACT_TABLES = get_env_var('PYMUPDF_EXTRACT_TABLES', default='true').lower() in ('true', '1', 'yes')
 
 # =============================================================================
 # Validation
@@ -122,6 +137,13 @@ def validate_config():
     print(f"Primary Model:    {MODEL_PRIMARY}")
     print(f"Secondary Model:  {MODEL_SECONDARY}")
     print(f"Tertiary Model:   {MODEL_TERTIARY}")
+    print(f"")
+    print(f"PDF Extraction:")
+    print(f"  Use PyMuPDF:    {USE_PYMUPDF}")
+    if USE_PYMUPDF:
+        print(f"  Min Fig Size:   {PYMUPDF_MIN_FIGURE_SIZE}px")
+        print(f"  Resolution:     {PYMUPDF_RESOLUTION_SCALE}x (~{int(72 * PYMUPDF_RESOLUTION_SCALE)} DPI)")
+        print(f"  Extract Tables: {PYMUPDF_EXTRACT_TABLES}")
     print("=" * 80 + "\n")
 
 

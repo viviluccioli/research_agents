@@ -1,11 +1,11 @@
-# app.py - Evaluation Agent with tabbed workflows
+# app_exp_4.py - Evaluation Agent (Experiment 4 with 10 personas)
 import streamlit as st
-from referee import RefereeWorkflow
+from referee.workflow_exp_4 import RefereeWorkflow
 from section_eval import SectionEvaluatorApp
 from utils import cm
 
 WORKFLOWS = {
-    "Referee Report": RefereeWorkflow,
+    "Referee Report (Exp 4 - 10 Personas)": RefereeWorkflow,
     "Section Evaluator": SectionEvaluatorApp,
 }
 
@@ -193,9 +193,24 @@ def _render_section_evaluator_architecture():
 
 def _render_referee_report_architecture():
     """Display the Referee Report architecture with visual design"""
-    with st.expander("📐 **How It Works**", expanded=False):
+    with st.expander("📐 **How It Works (Exp 4: 10 Personas)**", expanded=False):
         st.markdown('<div class="architecture-section">', unsafe_allow_html=True)
-        st.markdown("#### Multi-Agent Debate Architecture")
+        st.markdown("#### Multi-Agent Debate Architecture (10 Available Personas)")
+
+        st.info("🧪 **Experiment 4**: This version has 10 persona options (vs 5 in the base system). **An LLM automatically selects the 3 most relevant personas** based on your paper's content—no manual paper type selection needed! Available personas: Theorist, Econometrician, ML_Expert, Data_Scientist, CS_Expert, Historian, Visionary, Policymaker, Ethicist, Perspective.")
+
+        # Step 0
+        st.markdown("""
+        <div class="step-box">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <span class="step-number">0</span>
+                <div style="margin-left: 20px; color: #333;">
+                    <strong style="font-size: 18px;">Automatic Persona Selection</strong><br/>
+                    <span style="font-size: 14px;">LLM reads the paper and selects the 3 most relevant personas from 10 options</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
         # Step 1
         st.markdown("""
@@ -260,12 +275,14 @@ def _render_referee_report_architecture():
         st.markdown('</div>', unsafe_allow_html=True)
 
 def main():
-    st.set_page_config(layout="wide", page_title="Co-Economist: Referee Report")
+    st.set_page_config(layout="wide", page_title="Evaluation Agent (Exp 4)")
 
     # Apply custom CSS
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-    st.title("Co-Economist: Referee Report")
+    st.title("Evaluation Agent (Experiment 4: 10 Personas)")
+
+    st.info("🧪 **Experiment 4**: This version includes an expanded Referee Report system with 10 persona options (Theorist, Econometrician, ML Expert, Data Scientist, CS Expert, Historian, Visionary, Policymaker, Ethicist, Perspective). The system still selects 3 personas but has more options to match paper content.")
 
     # Use cleaner heading style
     st.markdown("This agent helps you evaluate and improve your academic work. Choose one of two workflows below to get started.")
@@ -325,10 +342,10 @@ def main():
     if st.session_state.file_data:
         st.info(f"Available files: {', '.join(list(st.session_state.file_data.keys()))}")
 
-    # ----------------- Global Paper Type Selector -----------------
+    # ----------------- Paper Type Selector (Section Evaluator Only) -----------------
     st.markdown("---")
-    st.markdown("### Paper Type Selection")
-    st.markdown("Select your paper type to enable type-specific evaluation across both workflows.")
+    st.markdown("### Paper Type Selection (Optional - Section Evaluator Only)")
+    st.markdown("**Note**: For Experiment 4, the Referee Report workflow automatically selects personas based on paper content. Paper type selection is only used by the Section Evaluator.")
 
     from section_eval.criteria.base import PAPER_TYPES, PAPER_TYPE_LABELS
 
@@ -336,10 +353,10 @@ def main():
     with col1:
         paper_type_labels = [PAPER_TYPE_LABELS[pt] for pt in PAPER_TYPES]
         selected_label = st.selectbox(
-            "Paper Type",
+            "Paper Type (for Section Evaluator)",
             options=["— Select paper type —"] + paper_type_labels,
             key="global_paper_type_select",
-            help="Choose the type that best describes your paper. This affects evaluation criteria in Section Evaluator and persona selection in Referee Report."
+            help="Choose the type that best describes your paper. This affects evaluation criteria in Section Evaluator. Referee Report (Exp 4) auto-selects personas."
         )
 
     with col2:
@@ -353,10 +370,10 @@ def main():
                 "theoretical": "Formal mathematical models with proofs and derivations",
                 "policy": "Policy analysis with real-world applications and recommendations"
             }
-            st.info(f"**{selected_label}**: {descriptions.get(paper_type, '')}")
+            st.info(f"**{selected_label}**: {descriptions.get(paper_type, '')} *(Only used by Section Evaluator)*")
         else:
             st.session_state.paper_type = None
-            st.info("Please select a paper type to enable full functionality in both evaluation workflows.")
+            st.info("Paper type is optional for Experiment 4. Referee Report auto-selects personas; Section Evaluator needs paper type.")
 
     # ----------------- Create visual tabs -----------------
     tab_labels = list(WORKFLOWS.keys())
@@ -388,13 +405,13 @@ def main():
             # Show architecture display specific to each workflow
             if label == "Section Evaluator":
                 _render_section_evaluator_architecture()
-            elif label == "Referee Report":
+            elif "Referee Report" in label:
                 _render_referee_report_architecture()
 
             st.markdown("---")
 
             # Workflow session key (persist instance)
-            key = f"{label.lower().replace(' ', '_')}_workflow"
+            key = f"{label.lower().replace(' ', '_').replace('(', '').replace(')', '').replace('-', '_')}_workflow"
             if key not in st.session_state:
                 # Instantiate and store
                 try:

@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-# workflow.py - Main Multi-Agent Referee Report UI
+# workflow_exp_4.py - Experiment 4 Multi-Agent Referee Report UI
 """
-Main production UI for the multi-agent debate (MAD) referee report system.
+Experimental version with 10 personas (selects 3) based on mad_experiments/exp_4.
 
-This is the official workflow used in app.py. It uses LLM-powered summarization
-to compress debate outputs for cleaner display while preserving full reports
-in expandable sections.
+This version uses the engine_exp_4 module which includes 10 persona options
+instead of the original 5. It uses LLM-powered summarization to compress
+debate outputs for cleaner display while preserving full reports in expandable sections.
 """
 import streamlit as st
 import json
@@ -20,7 +20,7 @@ from io import BytesIO
 import pdfplumber
 import pandas as pd
 from utils import cm, single_query
-from referee.engine import execute_debate_pipeline, SELECTION_PROMPT, SYSTEM_PROMPTS, DEBATE_PROMPTS
+from referee.engine_exp_4 import execute_debate_pipeline, SELECTION_PROMPT, SYSTEM_PROMPTS, DEBATE_PROMPTS
 from referee._utils.summarizer import summarize_all_rounds
 from referee._utils.pdf_extractor_v2 import extract_pdf_with_figures, PYMUPDF_AVAILABLE, ExtractedContent
 from config import USE_PYMUPDF, PYMUPDF_MIN_FIGURE_SIZE, PYMUPDF_RESOLUTION_SCALE, PYMUPDF_EXTRACT_TABLES
@@ -39,7 +39,8 @@ from referee._archived.full_output_ui import (
     generate_summary_table
 )
 
-# Region fixer removed - relying on PyMuPDF and Vision API only
+# Import equation/table fixer
+from section_eval.region_fixer import render_region_fixer
 
 
 class RefereeWorkflow:
@@ -95,56 +96,83 @@ The system operates in **5 sequential rounds**:
 
 ---
 
-### 👥 Available Personas (2-5 will be selected)
+### 👥 Available Personas (10 personas, 3 will be selected)
             """)
 
-            # Compact horizontal persona cards
+            # Compact horizontal persona cards (10 personas)
             st.markdown("""
             <style>
             .persona-card {
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 border-radius: 12px;
-                padding: 15px;
+                padding: 12px;
                 margin: 5px;
                 text-align: center;
                 color: white;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                flex: 1;
+                min-width: 160px;
             }
             .persona-card h4 {
-                margin: 0 0 8px 0;
-                font-size: 18px;
+                margin: 0 0 6px 0;
+                font-size: 16px;
             }
             .persona-card p {
-                margin: 4px 0;
-                font-size: 12px;
+                margin: 3px 0;
+                font-size: 11px;
                 opacity: 0.95;
             }
             .persona-theorist { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-            .persona-empiricist { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+            .persona-econometrician { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+            .persona-ml-expert { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+            .persona-data-scientist { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+            .persona-cs-expert { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
             .persona-historian { background: linear-gradient(135deg, #7f7fd5 0%, #86a8e7 100%); }
             .persona-visionary { background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%); }
             .persona-policymaker { background: linear-gradient(135deg, #ee5a6f 0%, #f29263 100%); }
+            .persona-ethicist { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); }
+            .persona-perspective { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); }
             </style>
-            <div style="display: flex; justify-content: space-between; gap: 8px; margin: 15px 0;">
+            <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 15px 0;">
                 <div class="persona-card persona-theorist">
                     <h4>🔢 Theorist</h4>
                     <p><strong>Focus:</strong> Mathematical logic & proofs</p>
                 </div>
-                <div class="persona-card persona-empiricist">
-                    <h4>📊 Empiricist</h4>
-                    <p><strong>Focus:</strong> Data & identification</p>
+                <div class="persona-card persona-econometrician">
+                    <h4>📊 Econometrician</h4>
+                    <p><strong>Focus:</strong> Causal inference & identification</p>
+                </div>
+                <div class="persona-card persona-ml-expert">
+                    <h4>🤖 ML Expert</h4>
+                    <p><strong>Focus:</strong> Model architecture & hyperparameters</p>
+                </div>
+                <div class="persona-card persona-data-scientist">
+                    <h4>📈 Data Scientist</h4>
+                    <p><strong>Focus:</strong> Data pipeline & preprocessing</p>
+                </div>
+                <div class="persona-card persona-cs-expert">
+                    <h4>💻 CS Expert</h4>
+                    <p><strong>Focus:</strong> Algorithms & complexity</p>
                 </div>
                 <div class="persona-card persona-historian">
                     <h4>📚 Historian</h4>
-                    <p><strong>Focus:</strong> Literature context</p>
+                    <p><strong>Focus:</strong> Literature lineage</p>
                 </div>
                 <div class="persona-card persona-visionary">
                     <h4>🚀 Visionary</h4>
-                    <p><strong>Focus:</strong> Innovation & novelty</p>
+                    <p><strong>Focus:</strong> Paradigm shifts & novelty</p>
                 </div>
                 <div class="persona-card persona-policymaker">
                     <h4>🏛️ Policymaker</h4>
-                    <p><strong>Focus:</strong> Policy relevance</p>
+                    <p><strong>Focus:</strong> Policy relevance & welfare</p>
+                </div>
+                <div class="persona-card persona-ethicist">
+                    <h4>⚖️ Ethicist</h4>
+                    <p><strong>Focus:</strong> Moral values & accountability</p>
+                </div>
+                <div class="persona-card persona-perspective">
+                    <h4>🌍 Perspective</h4>
+                    <p><strong>Focus:</strong> DEI & distributional impacts</p>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -239,14 +267,23 @@ The system operates in **5 sequential rounds**:
 
         elif persona_mode == "🎯 Manual Selection (You choose personas, system assigns weights)":
             st.markdown("**Select 2-5 personas to evaluate your paper:**")
-            available_personas = ["Theorist", "Empiricist", "Historian", "Visionary", "Policymaker"]
+            available_personas = [
+                "Theorist", "Econometrician", "ML_Expert", "Data_Scientist", "CS_Expert",
+                "Historian", "Visionary", "Policymaker", "Ethicist", "Perspective"
+            ]
 
-            cols = st.columns(5)
+            # Display in 2 rows of 5
+            st.markdown("**Row 1:**")
+            cols1 = st.columns(5)
+            st.markdown("**Row 2:**")
+            cols2 = st.columns(5)
             selected_personas_list = []
 
             for idx, persona in enumerate(available_personas):
-                with cols[idx]:
-                    if st.checkbox(persona, key=f"persona_check_{persona}"):
+                col = cols1[idx] if idx < 5 else cols2[idx - 5]
+                with col:
+                    display_name = persona.replace("_", " ")
+                    if st.checkbox(display_name, key=f"persona_check_{persona}"):
                         selected_personas_list.append(persona)
 
             if len(selected_personas_list) < 2:
@@ -260,18 +297,28 @@ The system operates in **5 sequential rounds**:
 
         elif persona_mode == "⚙️ Full Manual (You choose personas AND weights)":
             st.markdown("**Select 2-5 personas and assign their weights:**")
-            available_personas = ["Theorist", "Empiricist", "Historian", "Visionary", "Policymaker"]
+            available_personas = [
+                "Theorist", "Econometrician", "ML_Expert", "Data_Scientist", "CS_Expert",
+                "Historian", "Visionary", "Policymaker", "Ethicist", "Perspective"
+            ]
 
             st.info("💡 Weights must sum to 1.0. Higher weight = more influence on final decision")
 
             selected_personas_dict = {}
-            cols_check = st.columns(5)
+
+            # Display checkboxes in 2 rows of 5
+            st.markdown("**Row 1:**")
+            cols_check1 = st.columns(5)
+            st.markdown("**Row 2:**")
+            cols_check2 = st.columns(5)
             selected_for_weight = []
 
-            # First row: checkboxes
+            # First row and second row: checkboxes
             for idx, persona in enumerate(available_personas):
-                with cols_check[idx]:
-                    if st.checkbox(persona, key=f"persona_check_manual_{persona}"):
+                col = cols_check1[idx] if idx < 5 else cols_check2[idx - 5]
+                with col:
+                    display_name = persona.replace("_", " ")
+                    if st.checkbox(display_name, key=f"persona_check_manual_{persona}"):
                         selected_for_weight.append(persona)
 
             if len(selected_for_weight) < 2:
@@ -313,15 +360,19 @@ The system operates in **5 sequential rounds**:
         st.markdown("---")
 
         # Session state keys for this workflow
+        extraction_key = f"referee_extraction_done_{manuscript_file}"
+        fixes_key = f"referee_fixes_applied_{manuscript_file}"
         text_key = f"referee_text_{manuscript_file}"
+        fixed_text_key = f"referee_fixed_text_{manuscript_file}"
 
-        # Check if text has been extracted
-        paper_text = st.session_state.get(text_key, None)
+        # Check workflow state
+        extraction_done = st.session_state.get(extraction_key, False)
+        fixes_applied = st.session_state.get(fixes_key, False)
 
-        # Extract text if not already done
-        if paper_text is None:
-            st.info("👉 **Next Step**: Extract text from your PDF and run the multi-agent debate")
-            if st.button("🚀 Extract & Run Debate", type="primary", key="extract_debate_btn"):
+        # Stage 1: Initial button to extract text
+        if not extraction_done:
+            st.info("👉 **Next Step**: Extract text from your PDF and review equations/tables before running the debate")
+            if st.button("🚀 Step 1: Extract & Review Text", type="primary", width="stretch"):
                 if not manuscript_file:
                     st.error("Please select a manuscript file.")
                     return
@@ -330,12 +381,88 @@ The system operates in **5 sequential rounds**:
                     # Extract text from manuscript
                     paper_text = self.extract_text_from_pdf(files[manuscript_file])
                     st.session_state[text_key] = paper_text
-                    st.success("✅ Text extracted! Starting debate...")
+                    st.session_state[extraction_key] = True
+                    st.success("✅ Text extracted! Review equations/tables below.")
                     st.rerun()
+
+        # Stage 2: Show equation fixer UI (after extraction, before fixes applied)
+        if extraction_done and not fixes_applied:
+            paper_text = st.session_state.get(text_key, "")
+
+            # Workflow progress indicator
+            st.markdown("### 📍 Two-Stage Workflow")
+            col_stage1, col_arrow, col_stage2 = st.columns([1, 0.2, 1])
+
+            with col_stage1:
+                st.markdown(
+                    '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                    'color: white; padding: 15px; border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 1: Fix Equations & Tables</strong><br/>'
+                    '<span style="font-size: 12px;">Currently here ✓</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            with col_arrow:
+                st.markdown('<div style="text-align: center; font-size: 30px;">→</div>', unsafe_allow_html=True)
+
+            with col_stage2:
+                st.markdown(
+                    '<div style="background: #e0e0e0; color: #666; padding: 15px; '
+                    'border-radius: 10px; text-align: center; border: 2px dashed #999;">'
+                    '<strong>STAGE 2: Run Multi-Agent Debate</strong><br/>'
+                    '<span style="font-size: 12px;">After fixing</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            st.markdown("---")
+            st.markdown("### 🔍 Extraction Quality Check")
+
+            # Render the region fixer
+            render_region_fixer(
+                text=paper_text,
+                manuscript_name=manuscript_file,
+                cache_prefix="referee",
+                llm_query_fn=single_query,
+                min_confidence=0.5
+            )
+
+            # Don't proceed until fixes are applied
             return
 
-        # Run the debate with extracted text
-        if paper_text:
+        # Stage 3: Run the debate (after fixes applied)
+        if extraction_done and fixes_applied:
+            # Get the fixed text
+            paper_text = st.session_state.get(fixed_text_key, st.session_state.get(text_key, ""))
+
+            # Workflow progress indicator for stage 2
+            st.markdown("### 📍 Two-Stage Workflow")
+            col_stage1, col_arrow, col_stage2 = st.columns([1, 0.2, 1])
+
+            with col_stage1:
+                st.markdown(
+                    '<div style="background: #4caf50; color: white; padding: 15px; '
+                    'border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 1: Fix Equations & Tables</strong><br/>'
+                    '<span style="font-size: 12px;">✓ Complete</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
+            with col_arrow:
+                st.markdown('<div style="text-align: center; font-size: 30px;">→</div>', unsafe_allow_html=True)
+
+            with col_stage2:
+                st.markdown(
+                    '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                    'color: white; padding: 15px; border-radius: 10px; text-align: center;">'
+                    '<strong>STAGE 2: Run Multi-Agent Debate</strong><br/>'
+                    '<span style="font-size: 12px;">Ready to run ✓</span>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+
             st.markdown("---")
 
             # Cache controls
@@ -424,8 +551,12 @@ The system operates in **5 sequential rounds**:
             with col_reset:
                 if st.button("🔄 Start Over", width="stretch"):
                     # Clear all session state for this manuscript
+                    st.session_state.pop(extraction_key, None)
+                    st.session_state.pop(fixes_key, None)
                     st.session_state.pop(text_key, None)
-                    st.info("Workflow reset. Click 'Extract & Run Debate' to start over.")
+                    st.session_state.pop(fixed_text_key, None)
+                    st.session_state.pop(f"referee_region_fixes_{manuscript_file}", None)
+                    st.info("Workflow reset. Click 'Step 1' to start over.")
                     st.rerun()
 
             if run_debate:
@@ -990,25 +1121,42 @@ The system operates in **5 sequential rounds**:
                     st.markdown(f"\n**Cache Key:** `{cache_info['cache_key'][:32]}...`")
                     st.caption("This key uniquely identifies the paper, personas, weights, and model configuration.")
 
-        # Icon mapping for all personas
+        # Icon mapping for all 10 Exp 4 personas
         icon_map = {
             "Theorist": "🔢",
-            "Empiricist": "📊",
-            "Mathematician": "🔢",
+            "Econometrician": "📊",
+            "ML_Expert": "🤖",
+            "Data_Scientist": "📈",
+            "CS_Expert": "💻",
             "Historian": "📚",
             "Visionary": "🚀",
-            "Policymaker": "🏛️"
+            "Policymaker": "🏛️",
+            "Ethicist": "⚖️",
+            "Perspective": "🌍"
         }
 
         # Get active personas from round 0
-        active_personas = results.get('round_0', {}).get('selected_personas', ["Mathematician", "Historian", "Visionary"])
+        selected_personas = results.get('round_0', {}).get('selected_personas', ["Econometrician", "ML_Expert", "Policymaker"])
         weights = results.get('round_0', {}).get('weights', {})
+
+        # IMPORTANT: Use personas that actually have results in round_1
+        # This prevents KeyError if a persona was selected but failed to complete
+        actual_round_1_personas = list(results.get('round_1', {}).keys())
+        active_personas = actual_round_1_personas if actual_round_1_personas else selected_personas
 
         # ROUND 0: Persona Selection
         if 'round_0' in results:
             st.markdown('<div class="round-header">🎯 ROUND 0: PERSONA SELECTION</div>', unsafe_allow_html=True)
             with st.expander("📋 **Selected Review Panel**", expanded=True):
-                st.markdown(f"**Selected Personas:** {', '.join(active_personas)}")
+                st.markdown(f"**Selected Personas:** {', '.join(selected_personas)}")
+
+                # Warn if there's a mismatch between selected and actual
+                if set(selected_personas) != set(active_personas):
+                    st.warning(
+                        f"⚠️ **Note:** Only {len(active_personas)} of {len(selected_personas)} personas completed successfully. "
+                        f"Displaying results for: {', '.join(active_personas)}"
+                    )
+
                 st.markdown("**Weights:**")
                 for persona, weight in weights.items():
                     st.markdown(f"- **{persona}**: {weight}")
@@ -1085,7 +1233,10 @@ The system operates in **5 sequential rounds**:
         with st.expander("🔍 **View System Prompt for Round 2A**", expanded=False):
             st.code(DEBATE_PROMPTS["Round_2A_Cross_Examination"], language="text")
 
-        for role in active_personas:
+        # Filter to personas that actually completed this round
+        round_2a_personas = [p for p in active_personas if p in results.get('round_2a', {})]
+
+        for role in round_2a_personas:
             icon = icon_map.get(role, "🔍")
             box_class = f"{role.lower()}-box"
 
@@ -1156,7 +1307,10 @@ The system operates in **5 sequential rounds**:
         with st.expander("🔍 **View System Prompt for Round 2B**", expanded=False):
             st.code(DEBATE_PROMPTS["Round_2B_Direct_Examination"], language="text")
 
-        for role in active_personas:
+        # Filter to personas that actually completed this round
+        round_2b_personas = [p for p in active_personas if p in results.get('round_2b', {})]
+
+        for role in round_2b_personas:
             icon = icon_map.get(role, "🔍")
             box_class = f"{role.lower()}-box"
 
@@ -1215,9 +1369,12 @@ The system operates in **5 sequential rounds**:
         with st.expander("🔍 **View System Prompt for Round 2C**", expanded=False):
             st.code(DEBATE_PROMPTS["Round_2C_Final_Amendment"], language="text")
 
+        # Filter to personas that actually completed this round
+        round_2c_personas = [p for p in active_personas if p in results.get('round_2c', {})]
+
         if has_summaries:
-            cols = st.columns(3)
-            for idx, role in enumerate(active_personas):
+            cols = st.columns(len(round_2c_personas))
+            for idx, role in enumerate(round_2c_personas):
                 icon = icon_map.get(role, "🔍")
                 box_class = f"{role.lower()}-box"
 
@@ -1240,7 +1397,7 @@ The system operates in **5 sequential rounds**:
                         st.markdown(formatted_text, unsafe_allow_html=True)
         else:
             # Display FULL output directly
-            for role in active_personas:
+            for role in round_2c_personas:
                 icon = icon_map.get(role, "🔍")
                 raw_text = results['round_2c'][role]
                 formatted_text = format_severity_labels(raw_text)
@@ -1576,9 +1733,10 @@ Justification: {results.get('round_0', {}).get('justification', 'N/A')}
 
 """
             for role in active_personas:
-                summary_data = summaries['round_1_summaries'].get(role, {})
-                full_report += f"### {role} (Summary)\n{summary_data.get('summary', 'N/A')}\n\n"
-                full_report += f"### {role} (Full Report)\n{results['round_1'][role]}\n\n"
+                if role in results.get('round_1', {}):
+                    summary_data = summaries['round_1_summaries'].get(role, {})
+                    full_report += f"### {role} (Summary)\n{summary_data.get('summary', 'N/A')}\n\n"
+                    full_report += f"### {role} (Full Report)\n{results['round_1'][role]}\n\n"
 
             full_report += """---
 
@@ -1586,9 +1744,10 @@ Justification: {results.get('round_0', {}).get('justification', 'N/A')}
 
 """
             for role in active_personas:
-                summary_text = summaries['round_2a_summaries'].get(role, 'N/A')
-                full_report += f"### {role} (Summary)\n{summary_text}\n\n"
-                full_report += f"### {role} (Full Report)\n{results['round_2a'][role]}\n\n"
+                if role in results.get('round_2a', {}):
+                    summary_text = summaries['round_2a_summaries'].get(role, 'N/A')
+                    full_report += f"### {role} (Summary)\n{summary_text}\n\n"
+                    full_report += f"### {role} (Full Report)\n{results['round_2a'][role]}\n\n"
 
             full_report += """---
 
@@ -1596,9 +1755,10 @@ Justification: {results.get('round_0', {}).get('justification', 'N/A')}
 
 """
             for role in active_personas:
-                summary_text = summaries['round_2b_summaries'].get(role, 'N/A')
-                full_report += f"### {role} (Summary)\n{summary_text}\n\n"
-                full_report += f"### {role} (Full Report)\n{results['round_2b'][role]}\n\n"
+                if role in results.get('round_2b', {}):
+                    summary_text = summaries['round_2b_summaries'].get(role, 'N/A')
+                    full_report += f"### {role} (Summary)\n{summary_text}\n\n"
+                    full_report += f"### {role} (Full Report)\n{results['round_2b'][role]}\n\n"
 
             full_report += """---
 
@@ -1606,9 +1766,10 @@ Justification: {results.get('round_0', {}).get('justification', 'N/A')}
 
 """
             for role in active_personas:
-                summary_data = summaries['round_2c_summaries'].get(role, {})
-                full_report += f"### {role} (Summary)\n{summary_data.get('summary', 'N/A')}\n\n"
-                full_report += f"### {role} (Full Report)\n{results['round_2c'][role]}\n\n"
+                if role in results.get('round_2c', {}):
+                    summary_data = summaries['round_2c_summaries'].get(role, {})
+                    full_report += f"### {role} (Summary)\n{summary_data.get('summary', 'N/A')}\n\n"
+                    full_report += f"### {role} (Full Report)\n{results['round_2c'][role]}\n\n"
 
             # Add deduplication section
             dedup_results = results.get('deduplication', {})
@@ -1691,7 +1852,8 @@ Justification: {results.get('round_0', {}).get('justification', 'N/A')}
                 label="📄 Download Full Evaluation Report",
                 data=full_report,
                 file_name=f"multi_agent_evaluation_summarized_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                mime="text/markdown"
+                mime="text/markdown",
+                key="download_full_report"
             )
 
         with col2:
@@ -1715,7 +1877,8 @@ Generated: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                 label="📊 Download Summary Table",
                 data=summary_md,
                 file_name=f"evaluation_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                mime="text/markdown"
+                mime="text/markdown",
+                key="download_summary_table"
             )
 
         with col3:
@@ -1727,7 +1890,8 @@ Generated: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                 data=excel_data,
                 file_name=f"experiment_tracking_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                help="Download structured Excel file with configurations, prompt versions, and verdicts for experiment comparison"
+                help="Download structured Excel file with configurations, prompt versions, and verdicts for experiment comparison",
+                key="download_excel_tracking"
             )
 
         # --- Add comprehensive ZIP download ---
@@ -1766,5 +1930,6 @@ Generated: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
             file_name=f"{paper_name}_{timestamp}_complete_evaluation.zip",
             mime="application/zip",
             help="Download all 3 files in a single ZIP archive",
-            type="primary"
+            type="primary",
+            key="download_all_zip"
         )

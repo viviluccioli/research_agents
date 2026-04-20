@@ -204,8 +204,9 @@ research_agents/
 |---|---|---|
 | API credentials | `app_system/.env` | (copy from `.env.example`) |
 | API endpoint | `app_system/config.py` | Loaded from `.env:API_BASE` |
-| MAD model | `app_system/utils.py:model_selection3` | Claude 3.7 Sonnet |
-| Section eval model | `app_system/utils.py:model_selection` | Claude Sonnet 4.5 |
+| Model (all systems) | `app_system/config.py` | **Claude 4.5 Sonnet** |
+| MAD model | `app_system/utils.py:model_selection3` | Claude 4.5 Sonnet (was 3.7) |
+| Section eval model | `app_system/utils.py:model_selection` | Claude 4.5 Sonnet |
 | Referee personas | `app_system/referee/engine.py:SYSTEM_PROMPTS` | 5 personas (3 selected per paper) |
 | Referee output mode | UI toggle in app | Full output (14 calls) or with summarization (+10-15 calls) |
 | Token/cost tracking | `app_system/referee/engine.py` | Automatic estimation with detailed breakdown |

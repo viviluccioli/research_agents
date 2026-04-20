@@ -4,9 +4,13 @@ openpyxl  # Required for Excel export functionality
 pyarrow<16.0,>=7.0  # Pinned to use pre-built wheels (avoid CMake 3.25+ requirement)
 tiktoken==0.7.0  # Pinned to use pre-built wheels (avoid Rust compiler requirement)
 pdfplumber
+PyMuPDF>=1.23.0  # PyMuPDF for advanced PDF extraction with figures
 streamlit
 python-dotenv
 Pillow
-pytesseract  # Optional: for OCR support in region fixer
+pytesseract  # Optional: for OCR support (table extraction, region fixer)
 PyYAML  # For config file parsing
 filelock  # For thread-safe cache file locking
+thefuzz  # For fuzzy string matching (quote validation)
+python-Levenshtein  # Optional: speeds up thefuzz (recommended)
+sentence-transformers  # Optional: for semantic similarity in deduplication (requires ~500MB model download)

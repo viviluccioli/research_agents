@@ -181,9 +181,9 @@ Configuration is managed via `.env` file (loaded by `config.py`):
 ### API Settings (.env file):
 - `API_KEY` - Your API key
 - `API_BASE` - API endpoint URL (supports OpenAI, Anthropic, Gemini, custom)
-- `MODEL_PRIMARY` - Primary model (Section Evaluator) - default: Claude Sonnet 4.5
-- `MODEL_SECONDARY` - Secondary model (Referee Debate) - default: Claude 3.7 Sonnet
-- `MODEL_TERTIARY` - Tertiary model (Legacy/Backup)
+- `MODEL_PRIMARY` - Primary model (all systems) - default: **Claude 4.5 Sonnet**
+- `MODEL_SECONDARY` - Secondary model (now also Claude 4.5) - formerly 3.7
+- `MODEL_TERTIARY` - Tertiary model (now also Claude 4.5) - legacy/backup
 
 See `.env.example` for configuration templates for different API providers.
 
@@ -209,7 +209,7 @@ The referee system supports two output modes (configurable via UI checkbox):
 The referee system automatically calculates and displays:
 - Input/output token counts (separate for debate vs summarization)
 - Number of LLM API calls
-- Estimated cost in USD (based on Claude 3.7 Sonnet pricing: $3/M input, $15/M output)
+- Estimated cost in USD (based on Claude 4.5 Sonnet pricing: $3/M input, $15/M output)
 - Breakdown by round and persona
 
 ## Notes
@@ -224,8 +224,8 @@ The referee system automatically calculates and displays:
 - The entire working application lives in `app_system/`. The repo root contains only setup files; `mad_experiments/` and `papers/` are research scratch folders.
 
 ### LLM Call Patterns
-- **`single_query()`** (in `utils.py`): Stateless calls used by the MAD system. Uses `model_selection3` (Claude 3.7 Sonnet) at temperature 1.0 with thinking mode enabled.
-- **`safe_query()`** (in `section_eval/utils.py`): Direct API calls used by section evaluator. Uses `model_selection` (Claude Sonnet 4.5) at temperature 0.3, bypasses ConversationManager.
+- **`single_query()`** (in `utils.py`): Stateless calls used by the MAD system. Uses `model_selection3` (**Claude 4.5 Sonnet**, formerly 3.7) at temperature 1.0 with thinking mode enabled.
+- **`safe_query()`** (in `section_eval/utils.py`): Direct API calls used by section evaluator. Uses `model_selection` (**Claude 4.5 Sonnet**) at temperature 0.3, bypasses ConversationManager.
 - **`ConversationManager.conv_query()`**: Stateful conversation management with automatic pruning when tokens exceed 8000.
 
 ### PDF Processing

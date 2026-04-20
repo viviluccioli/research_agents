@@ -409,7 +409,7 @@ def calculate_token_usage_and_cost(memo_text: str, results: Dict, num_personas: 
     total_output_tokens = (r1_output_tokens + r2a_output_tokens + r2b_output_tokens +
                           r2c_output_tokens + editor_report_tokens)
 
-    # Cost calculation (Claude 3.7 Sonnet pricing)
+    # Cost calculation (Claude 4.5 Sonnet pricing)
     input_cost_per_million = 3.00
     output_cost_per_million = 15.00
 
@@ -434,7 +434,7 @@ def calculate_token_usage_and_cost(memo_text: str, results: Dict, num_personas: 
         'pricing': {
             'input_per_million': input_cost_per_million,
             'output_per_million': output_cost_per_million,
-            'model': 'Claude 3.7 Sonnet'
+            'model': 'Claude 4.5 Sonnet'
         }
     }
 
@@ -536,7 +536,7 @@ async def execute_debate_pipeline(
         'end_time': end_time.strftime("%Y-%m-%d %H:%M:%S"),
         'total_runtime_seconds': runtime_seconds,
         'total_runtime_formatted': f"{int(runtime_seconds // 60)}m {int(runtime_seconds % 60)}s",
-        'model_version': 'Claude 3.7 Sonnet',
+        'model_version': 'Claude 4.5 Sonnet',
         'temperature': temperature if temperature is not None else 1.0,
         'thinking_enabled': True,
         'thinking_budget_tokens': 2048,
