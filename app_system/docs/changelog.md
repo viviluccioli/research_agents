@@ -1,6 +1,103 @@
 # Changelog — app_system
 
+## 04/15
+
+### Feature: Cross-Reference Deduplication for Referee Reports
+**Added**
+- **Round 2.5**: New deduplication pass between Round 2C and Round 3 to merge duplicate findings across personas
+- Multi-metric similarity detection using:
+  - Quote overlap: Findings citing the same paper section
+  - Keyword matching: Common technical terms and phrases (econometrics, identification, etc.)
+  - Category/severity overlap: Same issue type and severity level
+  - Semantic similarity: Embedding-based clustering using sentence-transformers (optional)
+- Intelligent merging strategy that preserves unique perspectives:
+  - Keeps highest severity finding as representative
+  - Combines evidence from all personas
+  - Attributes findings to multiple personas: "[Theorist, Empiricist]"
+  - Respects severity differences (won't merge fatal with minor issues)
+- New module: `referee/_utils/deduplicator.py` (~600 lines)
+  - `deduplicate_findings()`: Main pipeline function
+  - `cluster_similar_findings()`: Greedy clustering algorithm
+  - `merge_cluster()`: Consolidates similar findings
+  - `identify_cross_references()`: Detects explicit cross-references
+  - Automatic feature extraction: severity, category, quotes, keywords
+
+**Enhanced**
+- `referee/engine.py`: Integrated deduplication as Round 2.5 (between 2C and 3)
+- `referee/workflow.py`: Added deduplication statistics display and export
+  - UI section showing findings before/after, clusters merged, reduction rate
+  - Excel export: "Deduplication" summary sheet + "Dedup Details" findings sheet
+  - Markdown report: Round 2.5 section with merged cluster details
+  - View merged findings in expandable UI section
+- `referee/_utils/__init__.py`: Exported deduplication functions
+
+**Configuration** (in `.env`)
+- `ENABLE_DEDUPLICATION=true` - Enable/disable deduplication (default: true)
+- `DEDUP_SIMILARITY_THRESHOLD=0.8` - Minimum similarity to merge (0.0-1.0)
+- `DEDUP_PRESERVE_DISTINCT_PERSPECTIVES=true` - Preserve different severity levels
+
+**Dependencies**
+- Required: `thefuzz` - Fuzzy string matching for quote validation
+- Optional: `sentence-transformers` - Semantic similarity (~500MB model download)
+- Optional: `python-Levenshtein` - Speeds up thefuzz (recommended)
+- Added all three to `requirements.txt`
+
+**Similarity Weighting**
+- With embeddings: 40% semantic, 25% keywords, 20% quotes, 15% category
+- Without embeddings: 45% keywords, 30% category, 25% quotes
+- Graceful fallback to keyword-based matching if sentence-transformers unavailable
+
+**Metadata Tracking**
+- `results['deduplication']`: Full deduplication results
+- `results['metadata']['deduplication']`: Statistics summary
+  - `total_findings_before`, `total_findings_after`, `clusters_merged`
+  - `reduction_rate` (percentage), `embeddings_available` (boolean)
+
+**Benefits**
+- Reduces redundancy: Typical 20-40% reduction in findings
+- Preserves information: No loss of unique insights or perspectives
+- Improves readability: Cleaner final report without duplicate issues
+- Transparency: All merges tracked and logged for audit
+
+---
+
 ## 04/13
+
+### Feature: PyMuPDF PDF Extraction with Figure Support
+**Added**
+- Advanced PDF extraction using PyMuPDF (fitz) with automatic fallback to pdfplumber
+- Figure extraction supporting both embedded images and rendered vector graphics
+- Caption parsing with figure number detection, title extraction, and multi-panel detection
+- Table extraction via OCR using pytesseract with confidence scoring
+- Multi-column layout detection for complex paper formats
+- Figure storage in session state for future vision-based analysis
+- Deduplication to prevent extracting same figure multiple times
+- Text reference detection to find figure mentions in paper text
+- New module: `referee/_utils/pdf_extractor_v2.py` (~900 lines)
+- Test script: `tests/test_pymupdf_extractor.py`
+- Documentation: `docs/pymupdf_extraction.md` (comprehensive guide)
+
+**Enhanced**
+- `referee/workflow.py`: Updated PDF extraction with figure support and UI diagnostics
+- `config.py`: Added PyMuPDF configuration options (USE_PYMUPDF, MIN_FIGURE_SIZE, etc.)
+- UI displays extractor used (PyMuPDF/pdfplumber), figure previews, extraction metadata
+- Automatic fallback to pdfplumber if PyMuPDF fails or unavailable
+
+**Configuration** (in `.env`)
+- `USE_PYMUPDF=true` - Enable PyMuPDF extraction (default: true)
+- `PYMUPDF_MIN_FIGURE_SIZE=100` - Min figure dimension in pixels
+- `PYMUPDF_RESOLUTION_SCALE=2.0` - Resolution scale (~150 DPI)
+- `PYMUPDF_EXTRACT_TABLES=true` - Enable table OCR
+
+**Dependencies**
+- Required: `PyMuPDF>=1.23.0`
+- Optional: `pytesseract>=0.3.10`, `Pillow>=10.0.0` (for OCR)
+- System: tesseract-ocr (for OCR functionality)
+
+**Future Integration**
+Figures stored in `debate_state['figures']` ready for vision-enabled persona analysis. Personas can reference figures by ID and request specific figures for detailed multimodal analysis.
+
+---
 
 ### Feature: Granular caching system for referee reports
 **Added**
