@@ -1,0 +1,12 @@
+# Experiment results - ignore all subdirectories and files except .gitkeep
+results/*
+!results/.gitkeep
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary files
+*.tmp
+*.log
