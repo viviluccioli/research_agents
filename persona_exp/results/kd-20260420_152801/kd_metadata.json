@@ -1,0 +1,53 @@
+{
+  "experiment": {
+    "name": "Persona Selection Consistency",
+    "date": "2026-04-20T15:28:45.387604",
+    "total_duration_seconds": 43.590682
+  },
+  "paper": {
+    "title": "kd",
+    "filename": "kd",
+    "tokens": 13993
+  },
+  "configuration": {
+    "model": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "num_personas_to_select": 3,
+    "num_available_personas": 10,
+    "thinking_enabled": true,
+    "thinking_budget_tokens": 2048,
+    "api_endpoint": "https://martinai-preview-api.frb.gov/v1",
+    "available_personas": "Theorist, Econometrician, ML_Expert, Data_Scientist, CS_Expert, Historian, Visionary, Policymaker, Ethicist, Perspective"
+  },
+  "results": {
+    "consistency_analysis": {
+      "total_runs": 10,
+      "unique_combinations": 2,
+      "most_common_combination": {
+        "personas": [
+          "CS_Expert",
+          "Data_Scientist",
+          "ML_Expert"
+        ],
+        "frequency": 7,
+        "percentage": 70.0
+      },
+      "persona_selection_frequency": {
+        "ML_Expert": 10,
+        "Data_Scientist": 10,
+        "CS_Expert": 7,
+        "Econometrician": 3
+      },
+      "persona_as_first_frequency": {
+        "ML_Expert": 10
+      },
+      "average_weights": {
+        "ML_Expert": 0.495,
+        "Data_Scientist": 0.29,
+        "CS_Expert": 0.22142857142857145,
+        "Econometrician": 0.20000000000000004
+      }
+    }
+  }
+}

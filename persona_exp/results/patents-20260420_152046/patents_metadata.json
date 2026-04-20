@@ -1,0 +1,52 @@
+{
+  "experiment": {
+    "name": "Persona Selection Consistency",
+    "date": "2026-04-20T15:21:42.236180",
+    "total_duration_seconds": 55.351634
+  },
+  "paper": {
+    "title": "patents",
+    "filename": "patents",
+    "tokens": 20390
+  },
+  "configuration": {
+    "model": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "num_personas_to_select": 3,
+    "num_available_personas": 10,
+    "thinking_enabled": true,
+    "thinking_budget_tokens": 2048,
+    "api_endpoint": "https://martinai-preview-api.frb.gov/v1",
+    "available_personas": "Theorist, Econometrician, ML_Expert, Data_Scientist, CS_Expert, Historian, Visionary, Policymaker, Ethicist, Perspective"
+  },
+  "results": {
+    "consistency_analysis": {
+      "total_runs": 10,
+      "unique_combinations": 1,
+      "most_common_combination": {
+        "personas": [
+          "Data_Scientist",
+          "Econometrician",
+          "Policymaker"
+        ],
+        "frequency": 10,
+        "percentage": 100.0
+      },
+      "persona_selection_frequency": {
+        "Econometrician": 10,
+        "Policymaker": 10,
+        "Data_Scientist": 10
+      },
+      "persona_as_first_frequency": {
+        "Econometrician": 7,
+        "Data_Scientist": 3
+      },
+      "average_weights": {
+        "Econometrician": 0.38,
+        "Policymaker": 0.29,
+        "Data_Scientist": 0.32999999999999996
+      }
+    }
+  }
+}

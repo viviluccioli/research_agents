@@ -1,6 +1,6 @@
-# Experiment results - ignore all subdirectories and files except .gitkeep
-results/*
-!results/.gitkeep
+# Experiment results - track result files
+# results/*
+# !results/.gitkeep
 
 # Python cache
 __pycache__/

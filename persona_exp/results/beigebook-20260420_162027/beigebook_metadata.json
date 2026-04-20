@@ -1,0 +1,53 @@
+{
+  "experiment": {
+    "name": "Persona Selection Consistency",
+    "date": "2026-04-20T16:21:08.629343",
+    "total_duration_seconds": 40.99329
+  },
+  "paper": {
+    "title": "beigebook",
+    "filename": "beigebook",
+    "tokens": 13315
+  },
+  "configuration": {
+    "model": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "num_personas_to_select": 3,
+    "num_available_personas": 10,
+    "thinking_enabled": true,
+    "thinking_budget_tokens": 2048,
+    "api_endpoint": "https://martinai-preview-api.frb.gov/v1",
+    "available_personas": "Theorist, Econometrician, ML_Expert, Data_Scientist, CS_Expert, Historian, Visionary, Policymaker, Ethicist, Perspective"
+  },
+  "results": {
+    "consistency_analysis": {
+      "total_runs": 10,
+      "unique_combinations": 2,
+      "most_common_combination": {
+        "personas": [
+          "Data_Scientist",
+          "Econometrician",
+          "Policymaker"
+        ],
+        "frequency": 9,
+        "percentage": 90.0
+      },
+      "persona_selection_frequency": {
+        "Econometrician": 10,
+        "Data_Scientist": 10,
+        "Policymaker": 9,
+        "ML_Expert": 1
+      },
+      "persona_as_first_frequency": {
+        "Econometrician": 10
+      },
+      "average_weights": {
+        "Econometrician": 0.5,
+        "Data_Scientist": 0.3,
+        "Policymaker": 0.2,
+        "ML_Expert": 0.2
+      }
+    }
+  }
+}

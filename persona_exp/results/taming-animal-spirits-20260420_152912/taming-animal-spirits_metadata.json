@@ -1,0 +1,55 @@
+{
+  "experiment": {
+    "name": "Persona Selection Consistency",
+    "date": "2026-04-20T15:30:00.182668",
+    "total_duration_seconds": 47.345844
+  },
+  "paper": {
+    "title": "taming-animal-spirits",
+    "filename": "taming-animal-spirits",
+    "tokens": 35571
+  },
+  "configuration": {
+    "model": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "num_personas_to_select": 3,
+    "num_available_personas": 10,
+    "thinking_enabled": true,
+    "thinking_budget_tokens": 2048,
+    "api_endpoint": "https://martinai-preview-api.frb.gov/v1",
+    "available_personas": "Theorist, Econometrician, ML_Expert, Data_Scientist, CS_Expert, Historian, Visionary, Policymaker, Ethicist, Perspective"
+  },
+  "results": {
+    "consistency_analysis": {
+      "total_runs": 10,
+      "unique_combinations": 3,
+      "most_common_combination": {
+        "personas": [
+          "Data_Scientist",
+          "Econometrician",
+          "Policymaker"
+        ],
+        "frequency": 5,
+        "percentage": 50.0
+      },
+      "persona_selection_frequency": {
+        "Econometrician": 10,
+        "Data_Scientist": 5,
+        "Policymaker": 10,
+        "ML_Expert": 3,
+        "Ethicist": 2
+      },
+      "persona_as_first_frequency": {
+        "Econometrician": 10
+      },
+      "average_weights": {
+        "Econometrician": 0.43,
+        "Data_Scientist": 0.30999999999999994,
+        "Policymaker": 0.3,
+        "ML_Expert": 0.25,
+        "Ethicist": 0.2
+      }
+    }
+  }
+}
