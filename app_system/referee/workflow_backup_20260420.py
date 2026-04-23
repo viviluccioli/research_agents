@@ -3,10 +3,9 @@
 """
 Main production UI for the multi-agent debate (MAD) referee report system.
 
-This version includes 10 persona options (Theorist, Econometrician, ML_Expert,
-Data_Scientist, CS_Expert, Historian, Visionary, Policymaker, Ethicist, Perspective).
-The system selects 3 personas automatically via Round 0 based on paper content.
-Uses LLM-powered summarization to compress debate outputs for cleaner display.
+This is the official workflow used in app.py. It uses LLM-powered summarization
+to compress debate outputs for cleaner display while preserving full reports
+in expandable sections.
 """
 import streamlit as st
 import json
@@ -96,83 +95,56 @@ The system operates in **5 sequential rounds**:
 
 ---
 
-### 👥 Available Personas (10 personas, 3 will be selected)
+### 👥 Available Personas (2-5 will be selected)
             """)
 
-            # Compact horizontal persona cards (10 personas)
+            # Compact horizontal persona cards
             st.markdown("""
             <style>
             .persona-card {
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 border-radius: 12px;
-                padding: 12px;
+                padding: 15px;
                 margin: 5px;
                 text-align: center;
                 color: white;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                flex: 1;
-                min-width: 160px;
             }
             .persona-card h4 {
-                margin: 0 0 6px 0;
-                font-size: 16px;
+                margin: 0 0 8px 0;
+                font-size: 18px;
             }
             .persona-card p {
-                margin: 3px 0;
-                font-size: 11px;
+                margin: 4px 0;
+                font-size: 12px;
                 opacity: 0.95;
             }
             .persona-theorist { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-            .persona-econometrician { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
-            .persona-ml-expert { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-            .persona-data-scientist { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-            .persona-cs-expert { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+            .persona-empiricist { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
             .persona-historian { background: linear-gradient(135deg, #7f7fd5 0%, #86a8e7 100%); }
             .persona-visionary { background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%); }
             .persona-policymaker { background: linear-gradient(135deg, #ee5a6f 0%, #f29263 100%); }
-            .persona-ethicist { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); }
-            .persona-perspective { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); }
             </style>
-            <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 15px 0;">
+            <div style="display: flex; justify-content: space-between; gap: 8px; margin: 15px 0;">
                 <div class="persona-card persona-theorist">
                     <h4>🔢 Theorist</h4>
                     <p><strong>Focus:</strong> Mathematical logic & proofs</p>
                 </div>
-                <div class="persona-card persona-econometrician">
-                    <h4>📊 Econometrician</h4>
-                    <p><strong>Focus:</strong> Causal inference & identification</p>
-                </div>
-                <div class="persona-card persona-ml-expert">
-                    <h4>🤖 ML Expert</h4>
-                    <p><strong>Focus:</strong> Model architecture & hyperparameters</p>
-                </div>
-                <div class="persona-card persona-data-scientist">
-                    <h4>📈 Data Scientist</h4>
-                    <p><strong>Focus:</strong> Data pipeline & preprocessing</p>
-                </div>
-                <div class="persona-card persona-cs-expert">
-                    <h4>💻 CS Expert</h4>
-                    <p><strong>Focus:</strong> Algorithms & complexity</p>
+                <div class="persona-card persona-empiricist">
+                    <h4>📊 Empiricist</h4>
+                    <p><strong>Focus:</strong> Data & identification</p>
                 </div>
                 <div class="persona-card persona-historian">
                     <h4>📚 Historian</h4>
-                    <p><strong>Focus:</strong> Literature lineage</p>
+                    <p><strong>Focus:</strong> Literature context</p>
                 </div>
                 <div class="persona-card persona-visionary">
                     <h4>🚀 Visionary</h4>
-                    <p><strong>Focus:</strong> Paradigm shifts & novelty</p>
+                    <p><strong>Focus:</strong> Innovation & novelty</p>
                 </div>
                 <div class="persona-card persona-policymaker">
                     <h4>🏛️ Policymaker</h4>
-                    <p><strong>Focus:</strong> Policy relevance & welfare</p>
-                </div>
-                <div class="persona-card persona-ethicist">
-                    <h4>⚖️ Ethicist</h4>
-                    <p><strong>Focus:</strong> Moral values & accountability</p>
-                </div>
-                <div class="persona-card persona-perspective">
-                    <h4>🌍 Perspective</h4>
-                    <p><strong>Focus:</strong> DEI & distributional impacts</p>
+                    <p><strong>Focus:</strong> Policy relevance</p>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -267,23 +239,14 @@ The system operates in **5 sequential rounds**:
 
         elif persona_mode == "🎯 Manual Selection (You choose personas, system assigns weights)":
             st.markdown("**Select 2-5 personas to evaluate your paper:**")
-            available_personas = [
-                "Theorist", "Econometrician", "ML_Expert", "Data_Scientist", "CS_Expert",
-                "Historian", "Visionary", "Policymaker", "Ethicist", "Perspective"
-            ]
+            available_personas = ["Theorist", "Empiricist", "Historian", "Visionary", "Policymaker"]
 
-            # Display in 2 rows of 5
-            st.markdown("**Row 1:**")
-            cols1 = st.columns(5)
-            st.markdown("**Row 2:**")
-            cols2 = st.columns(5)
+            cols = st.columns(5)
             selected_personas_list = []
 
             for idx, persona in enumerate(available_personas):
-                col = cols1[idx] if idx < 5 else cols2[idx - 5]
-                with col:
-                    display_name = persona.replace("_", " ")
-                    if st.checkbox(display_name, key=f"persona_check_{persona}"):
+                with cols[idx]:
+                    if st.checkbox(persona, key=f"persona_check_{persona}"):
                         selected_personas_list.append(persona)
 
             if len(selected_personas_list) < 2:
@@ -297,28 +260,18 @@ The system operates in **5 sequential rounds**:
 
         elif persona_mode == "⚙️ Full Manual (You choose personas AND weights)":
             st.markdown("**Select 2-5 personas and assign their weights:**")
-            available_personas = [
-                "Theorist", "Econometrician", "ML_Expert", "Data_Scientist", "CS_Expert",
-                "Historian", "Visionary", "Policymaker", "Ethicist", "Perspective"
-            ]
+            available_personas = ["Theorist", "Empiricist", "Historian", "Visionary", "Policymaker"]
 
             st.info("💡 Weights must sum to 1.0. Higher weight = more influence on final decision")
 
             selected_personas_dict = {}
-
-            # Display checkboxes in 2 rows of 5
-            st.markdown("**Row 1:**")
-            cols_check1 = st.columns(5)
-            st.markdown("**Row 2:**")
-            cols_check2 = st.columns(5)
+            cols_check = st.columns(5)
             selected_for_weight = []
 
-            # First row and second row: checkboxes
+            # First row: checkboxes
             for idx, persona in enumerate(available_personas):
-                col = cols_check1[idx] if idx < 5 else cols_check2[idx - 5]
-                with col:
-                    display_name = persona.replace("_", " ")
-                    if st.checkbox(display_name, key=f"persona_check_manual_{persona}"):
+                with cols_check[idx]:
+                    if st.checkbox(persona, key=f"persona_check_manual_{persona}"):
                         selected_for_weight.append(persona)
 
             if len(selected_for_weight) < 2:
@@ -1037,42 +990,25 @@ The system operates in **5 sequential rounds**:
                     st.markdown(f"\n**Cache Key:** `{cache_info['cache_key'][:32]}...`")
                     st.caption("This key uniquely identifies the paper, personas, weights, and model configuration.")
 
-        # Icon mapping for all 10 Exp 4 personas
+        # Icon mapping for all personas
         icon_map = {
             "Theorist": "🔢",
-            "Econometrician": "📊",
-            "ML_Expert": "🤖",
-            "Data_Scientist": "📈",
-            "CS_Expert": "💻",
+            "Empiricist": "📊",
+            "Mathematician": "🔢",
             "Historian": "📚",
             "Visionary": "🚀",
-            "Policymaker": "🏛️",
-            "Ethicist": "⚖️",
-            "Perspective": "🌍"
+            "Policymaker": "🏛️"
         }
 
         # Get active personas from round 0
-        selected_personas = results.get('round_0', {}).get('selected_personas', ["Econometrician", "ML_Expert", "Policymaker"])
+        active_personas = results.get('round_0', {}).get('selected_personas', ["Mathematician", "Historian", "Visionary"])
         weights = results.get('round_0', {}).get('weights', {})
-
-        # IMPORTANT: Use personas that actually have results in round_1
-        # This prevents KeyError if a persona was selected but failed to complete
-        actual_round_1_personas = list(results.get('round_1', {}).keys())
-        active_personas = actual_round_1_personas if actual_round_1_personas else selected_personas
 
         # ROUND 0: Persona Selection
         if 'round_0' in results:
             st.markdown('<div class="round-header">🎯 ROUND 0: PERSONA SELECTION</div>', unsafe_allow_html=True)
             with st.expander("📋 **Selected Review Panel**", expanded=True):
-                st.markdown(f"**Selected Personas:** {', '.join(selected_personas)}")
-
-                # Warn if there's a mismatch between selected and actual
-                if set(selected_personas) != set(active_personas):
-                    st.warning(
-                        f"⚠️ **Note:** Only {len(active_personas)} of {len(selected_personas)} personas completed successfully. "
-                        f"Displaying results for: {', '.join(active_personas)}"
-                    )
-
+                st.markdown(f"**Selected Personas:** {', '.join(active_personas)}")
                 st.markdown("**Weights:**")
                 for persona, weight in weights.items():
                     st.markdown(f"- **{persona}**: {weight}")
@@ -1149,10 +1085,7 @@ The system operates in **5 sequential rounds**:
         with st.expander("🔍 **View System Prompt for Round 2A**", expanded=False):
             st.code(DEBATE_PROMPTS["Round_2A_Cross_Examination"], language="text")
 
-        # Filter to personas that actually completed this round
-        round_2a_personas = [p for p in active_personas if p in results.get('round_2a', {})]
-
-        for role in round_2a_personas:
+        for role in active_personas:
             icon = icon_map.get(role, "🔍")
             box_class = f"{role.lower()}-box"
 
@@ -1223,10 +1156,7 @@ The system operates in **5 sequential rounds**:
         with st.expander("🔍 **View System Prompt for Round 2B**", expanded=False):
             st.code(DEBATE_PROMPTS["Round_2B_Direct_Examination"], language="text")
 
-        # Filter to personas that actually completed this round
-        round_2b_personas = [p for p in active_personas if p in results.get('round_2b', {})]
-
-        for role in round_2b_personas:
+        for role in active_personas:
             icon = icon_map.get(role, "🔍")
             box_class = f"{role.lower()}-box"
 
@@ -1285,12 +1215,9 @@ The system operates in **5 sequential rounds**:
         with st.expander("🔍 **View System Prompt for Round 2C**", expanded=False):
             st.code(DEBATE_PROMPTS["Round_2C_Final_Amendment"], language="text")
 
-        # Filter to personas that actually completed this round
-        round_2c_personas = [p for p in active_personas if p in results.get('round_2c', {})]
-
         if has_summaries:
-            cols = st.columns(len(round_2c_personas))
-            for idx, role in enumerate(round_2c_personas):
+            cols = st.columns(3)
+            for idx, role in enumerate(active_personas):
                 icon = icon_map.get(role, "🔍")
                 box_class = f"{role.lower()}-box"
 
@@ -1313,7 +1240,7 @@ The system operates in **5 sequential rounds**:
                         st.markdown(formatted_text, unsafe_allow_html=True)
         else:
             # Display FULL output directly
-            for role in round_2c_personas:
+            for role in active_personas:
                 icon = icon_map.get(role, "🔍")
                 raw_text = results['round_2c'][role]
                 formatted_text = format_severity_labels(raw_text)
@@ -1649,10 +1576,9 @@ Justification: {results.get('round_0', {}).get('justification', 'N/A')}
 
 """
             for role in active_personas:
-                if role in results.get('round_1', {}):
-                    summary_data = summaries['round_1_summaries'].get(role, {})
-                    full_report += f"### {role} (Summary)\n{summary_data.get('summary', 'N/A')}\n\n"
-                    full_report += f"### {role} (Full Report)\n{results['round_1'][role]}\n\n"
+                summary_data = summaries['round_1_summaries'].get(role, {})
+                full_report += f"### {role} (Summary)\n{summary_data.get('summary', 'N/A')}\n\n"
+                full_report += f"### {role} (Full Report)\n{results['round_1'][role]}\n\n"
 
             full_report += """---
 
@@ -1660,10 +1586,9 @@ Justification: {results.get('round_0', {}).get('justification', 'N/A')}
 
 """
             for role in active_personas:
-                if role in results.get('round_2a', {}):
-                    summary_text = summaries['round_2a_summaries'].get(role, 'N/A')
-                    full_report += f"### {role} (Summary)\n{summary_text}\n\n"
-                    full_report += f"### {role} (Full Report)\n{results['round_2a'][role]}\n\n"
+                summary_text = summaries['round_2a_summaries'].get(role, 'N/A')
+                full_report += f"### {role} (Summary)\n{summary_text}\n\n"
+                full_report += f"### {role} (Full Report)\n{results['round_2a'][role]}\n\n"
 
             full_report += """---
 
@@ -1671,10 +1596,9 @@ Justification: {results.get('round_0', {}).get('justification', 'N/A')}
 
 """
             for role in active_personas:
-                if role in results.get('round_2b', {}):
-                    summary_text = summaries['round_2b_summaries'].get(role, 'N/A')
-                    full_report += f"### {role} (Summary)\n{summary_text}\n\n"
-                    full_report += f"### {role} (Full Report)\n{results['round_2b'][role]}\n\n"
+                summary_text = summaries['round_2b_summaries'].get(role, 'N/A')
+                full_report += f"### {role} (Summary)\n{summary_text}\n\n"
+                full_report += f"### {role} (Full Report)\n{results['round_2b'][role]}\n\n"
 
             full_report += """---
 
@@ -1682,10 +1606,9 @@ Justification: {results.get('round_0', {}).get('justification', 'N/A')}
 
 """
             for role in active_personas:
-                if role in results.get('round_2c', {}):
-                    summary_data = summaries['round_2c_summaries'].get(role, {})
-                    full_report += f"### {role} (Summary)\n{summary_data.get('summary', 'N/A')}\n\n"
-                    full_report += f"### {role} (Full Report)\n{results['round_2c'][role]}\n\n"
+                summary_data = summaries['round_2c_summaries'].get(role, {})
+                full_report += f"### {role} (Summary)\n{summary_data.get('summary', 'N/A')}\n\n"
+                full_report += f"### {role} (Full Report)\n{results['round_2c'][role]}\n\n"
 
             # Add deduplication section
             dedup_results = results.get('deduplication', {})
@@ -1768,8 +1691,7 @@ Justification: {results.get('round_0', {}).get('justification', 'N/A')}
                 label="📄 Download Full Evaluation Report",
                 data=full_report,
                 file_name=f"multi_agent_evaluation_summarized_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                mime="text/markdown",
-                key="download_full_report"
+                mime="text/markdown"
             )
 
         with col2:
@@ -1793,8 +1715,7 @@ Generated: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                 label="📊 Download Summary Table",
                 data=summary_md,
                 file_name=f"evaluation_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                mime="text/markdown",
-                key="download_summary_table"
+                mime="text/markdown"
             )
 
         with col3:
@@ -1806,8 +1727,7 @@ Generated: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                 data=excel_data,
                 file_name=f"experiment_tracking_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                help="Download structured Excel file with configurations, prompt versions, and verdicts for experiment comparison",
-                key="download_excel_tracking"
+                help="Download structured Excel file with configurations, prompt versions, and verdicts for experiment comparison"
             )
 
         # --- Add comprehensive ZIP download ---
@@ -1846,6 +1766,5 @@ Generated: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
             file_name=f"{paper_name}_{timestamp}_complete_evaluation.zip",
             mime="application/zip",
             help="Download all 3 files in a single ZIP archive",
-            type="primary",
-            key="download_all_zip"
+            type="primary"
         )

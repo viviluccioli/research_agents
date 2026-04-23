@@ -195,22 +195,7 @@ def _render_referee_report_architecture():
     """Display the Referee Report architecture with visual design"""
     with st.expander("📐 **How It Works**", expanded=False):
         st.markdown('<div class="architecture-section">', unsafe_allow_html=True)
-        st.markdown("#### Multi-Agent Debate Architecture (10 Available Personas)")
-
-        st.info("🎯 **Automatic Persona Selection**: The system includes 10 persona options (Theorist, Econometrician, ML Expert, Data Scientist, CS Expert, Historian, Visionary, Policymaker, Ethicist, Perspective). An LLM automatically selects the 3 most relevant personas based on your paper's content—no manual paper type selection needed!")
-
-        # Step 0
-        st.markdown("""
-        <div class="step-box">
-            <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                <span class="step-number">0</span>
-                <div style="margin-left: 20px; color: #333;">
-                    <strong style="font-size: 18px;">Automatic Persona Selection</strong><br/>
-                    <span style="font-size: 14px;">LLM reads the paper and selects the 3 most relevant personas from 10 options</span>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("#### Multi-Agent Debate Architecture")
 
         # Step 1
         st.markdown("""
@@ -342,8 +327,8 @@ def main():
 
     # ----------------- Global Paper Type Selector -----------------
     st.markdown("---")
-    st.markdown("### Paper Type Selection (Optional - Section Evaluator Only)")
-    st.markdown("**Note**: The Referee Report workflow automatically selects personas based on paper content. Paper type selection is only required for the Section Evaluator.")
+    st.markdown("### Paper Type Selection")
+    st.markdown("Select your paper type to enable type-specific evaluation across both workflows.")
 
     from section_eval.criteria.base import PAPER_TYPES, PAPER_TYPE_LABELS
 
@@ -351,10 +336,10 @@ def main():
     with col1:
         paper_type_labels = [PAPER_TYPE_LABELS[pt] for pt in PAPER_TYPES]
         selected_label = st.selectbox(
-            "Paper Type (for Section Evaluator)",
+            "Paper Type",
             options=["— Select paper type —"] + paper_type_labels,
             key="global_paper_type_select",
-            help="Choose the type that best describes your paper. This affects evaluation criteria in Section Evaluator. Referee Report auto-selects personas."
+            help="Choose the type that best describes your paper. This affects evaluation criteria in Section Evaluator and persona selection in Referee Report."
         )
 
     with col2:
@@ -368,10 +353,10 @@ def main():
                 "theoretical": "Formal mathematical models with proofs and derivations",
                 "policy": "Policy analysis with real-world applications and recommendations"
             }
-            st.info(f"**{selected_label}**: {descriptions.get(paper_type, '')} *(Required for Section Evaluator only)*")
+            st.info(f"**{selected_label}**: {descriptions.get(paper_type, '')}")
         else:
             st.session_state.paper_type = None
-            st.info("Paper type is optional. Referee Report auto-selects personas; Section Evaluator requires paper type selection.")
+            st.info("Please select a paper type to enable full functionality in both evaluation workflows.")
 
     # ----------------- Create visual tabs -----------------
     tab_labels = list(WORKFLOWS.keys())

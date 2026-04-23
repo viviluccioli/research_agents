@@ -1,10 +1,18 @@
 # engine.py - Multi-Agent Debate Engine
 """
-Core orchestration engine for the multi-agent debate (MAD) system.
+Main debate engine for the multi-agent referee report system.
 
 This module orchestrates the 5-round debate process between AI personas
 to evaluate research papers. It handles persona selection, debate rounds,
 consensus calculation, and metadata tracking.
+
+Features:
+- 10 available personas (Theorist, Econometrician, ML_Expert, Data_Scientist,
+  CS_Expert, Historian, Visionary, Policymaker, Ethicist, Perspective)
+- Round 0: Automatic persona selection (selects 3)
+- Rounds 1-2C: Multi-agent debate with parallel execution
+- Round 3: Weighted consensus and editor decision
+- Caching support for cost-efficient re-runs
 """
 import asyncio
 import datetime
@@ -48,115 +56,186 @@ def load_custom_context_guide() -> str:
         print(f"Warning: Could not load custom context guide: {e}")
         return ""
 
+def load_error_severity_guide() -> str:
+    """Load error severity classification guide."""
+    try:
+        prompt_path = Path(__file__).parent.parent / "prompts" / "multi_agent_debate" / "additional_context" / "error_severity" / "v1.0.txt"
+        with open(prompt_path, 'r') as f:
+            return f.read()
+    except Exception as e:
+        print(f"Warning: Could not load error severity guide: {e}")
+        return ""
+
 # ==========================================
 # PERSONA SELECTION PROMPT (ROUND 0)
 # ==========================================
 SELECTION_PROMPT = """
-You are the Chief Editor of an economics journal. You must select exactly THREE expert personas to review the provided paper.
-The available personas are:
-1. "Theorist": Focuses on formal mathematical proofs, logic, and model insight.
-2. "Empiricist": Focuses on data, econometrics, identification strategy, and statistical validity.
-3. "Historian": Focuses on literature lineage, historical background, and appropriate situating of the paper in relevant context.
-4. "Visionary": Focuses on novelty and intellectual impact.
-5. "Policymaker": Focuses on real-world application, welfare implications, and policy relevance.
+You are the Chief Editor of an economics journal. You must select exactly {N} expert personas to review the provided paper.
 
-Select the 3 most crucial personas for reviewing this specific paper. Assign them weights based on their relative importance to assessing THIS SPECIFIC PAPER. The weights must sum exactly to 1.0.
+**IMPORTANT**: You MUST select from this EXACT list of available personas. Do not create new persona names or use variations:
 
-OUTPUT FORMAT: Return ONLY a valid JSON object. No markdown formatting, no explanations.
-{
-  "selected_personas": ["Persona1", "Persona2", "Persona3"],
-  "weights": {
-    "Persona1": 0.4,
-    "Persona2": 0.35,
-    "Persona3": 0.25
-  },
-  "justification": "1 sentence explaining the choice and weights."
-}
+1. "Theorist" - Rigorous mathematical logic, logically airtight explanations and proof
+
+2. "Econometrician" - Compelling causal inference, well-defined and constructed identification and estimation strategies, robust interpretation of results without overclaiming
+
+3. "ML_Expert" - Fundamental machine learning models, traditional ML, neural architecture, modern ML, well-justified hyperparameter decisions
+
+4. "Data_Scientist" - Data cleaning, processing, engineering, manipulation visualization, analysis, interpretation, cleanliness and interpretability of data manipulations
+
+5. "CS_Expert" - Sophistication in algorithm creation, computability, complexity, specification/implementation duality, recursion, fixpoint, scale, function/data duality, static/dynamic duality, modeling, interaction
+
+6. "Historian" - Literary history, subject-matter-corpus-specific context, accurate framing of the research narrative
+
+7. "Visionary" - Potential for paradigm shifts; broad intellectual novelty
+
+8. "Policymaker" - Real-world applicability, regulatory use, welfare implications, political and policy-making relevance
+
+9. "Ethicist" - Moral hazard, adverse selection, selection bias, overrepresented/underrepresented literature, privacy, consent, following a standard of conduct, fairness, accountability, adherence to moral and social values
+
+10. "Perspective" - Distributional consequences, algorithmic fairness, impact of research on marginalized groups and coverage of marginalized groups within research, racism, sexism, homophobia, transphobia, etc.
+
+### OBJECTIVE
+
+Select EXACTLY {N} personas from the list above that are most crucial for reviewing THIS SPECIFIC PAPER. Assign them weights based on relevance. Weights must sum exactly to 1.0.
+
+**CRITICAL**: Use the EXACT persona names as shown above (e.g., "ML_Expert" not "Machine Learning Expert", "Theorist" not "Mathematician").
+
+OUTPUT FORMAT (STRICT JSON):
+{{
+  "selected_personas": ["Persona1", "Persona2", ...],
+  "weights": {{"Persona1": 0.5, "Persona2": 0.5, ...}},
+  "justification": "1 sentence explaining the choice."
+}}
 """
 
 # ==========================================
 # SYSTEM PROMPTS FOR EACH AGENT
 # ==========================================
-# Loaded from versioned .txt files via PromptLoader.
-# The error severity block is injected automatically by get_persona_prompt()
-# in place of the {error_severity} placeholder in each persona file.
-from prompts.multi_agent_debate.prompt_loader import get_prompt_loader as _get_prompt_loader
+def load_persona_prompt(persona_name: str) -> str:
+    """Load persona system prompt from file."""
+    try:
+        # Try loading from the new persona directories
+        persona_dir_map = {
+            "Theorist": "theorist",
+            "Econometrician": "econometrician",
+            "ML_Expert": "ml_expert",
+            "Data_Scientist": "data_scientist",
+            "CS_Expert": "cs_expert",
+            "Historian": "historian",
+            "Visionary": "visionary",
+            "Policymaker": "policymaker",
+            "Ethicist": "ethicist",
+            "Perspective": "perspective"
+        }
 
-SYSTEM_PROMPTS = _get_prompt_loader().get_all_persona_prompts()
+        persona_dir = persona_dir_map.get(persona_name)
+        if not persona_dir:
+            raise ValueError(f"Unknown persona: {persona_name}")
+
+        prompt_path = Path(__file__).parent.parent / "prompts" / "multi_agent_debate" / "personas" / persona_dir / "v1.0.txt"
+        with open(prompt_path, 'r') as f:
+            prompt_content = f.read()
+
+        # Inject error severity guide
+        error_severity = load_error_severity_guide()
+        return prompt_content.replace("{error_severity}", error_severity)
+
+    except Exception as e:
+        print(f"Warning: Could not load persona prompt for {persona_name}: {e}")
+        # Fallback to hardcoded prompts
+        return FALLBACK_SYSTEM_PROMPTS.get(persona_name, f"ROLE: {persona_name}. Evaluate the paper.")
+
+# Fallback system prompts (used if file loading fails)
+FALLBACK_SYSTEM_PROMPTS = {
+    "Theorist": "ROLE: Pure Economic Theorist. Focus ONLY on mathematical logic, proofs, and the soundness of derivations.",
+
+    "Econometrician": "ROLE: Econometrician. Focus ONLY on causal inference, endogeneity, identification strategies, and the robustness of results and interpretation.",
+
+    "ML_Expert": "ROLE: Machine Learning/AI Expert. Focus ONLY on the model architecture decisions, structure, and execution (e.g., transformers, dimensionality reduction algorithms), hyperparameter tuning, train/test validity, model explanation, interpretability, and relevance; keep Occam's Razor in mind.",
+
+    "Data_Scientist": "ROLE: Data Science Expert. Focus ONLY on the data pipeline: data cleaning decisions, feature engineering, exploratory data analysis (EDA), data leakage, preprocessing biases, and potential mistakes.",
+
+    "CS_Expert": "ROLE: Computer Science Expert. Focus ONLY on algorithm creation if it is not SOLELY ML, computational complexity and efficiency, memory efficiency, hardware constraints.",
+
+    "Historian": "ROLE: Historian of Thought. Focus ONLY on literature lineage and how well the author represents that lineage, characterizes their work within the lineage, and contributes to the lineage.",
+
+    "Visionary": "ROLE: Visionary. Focus ONLY on paradigm-shifting potential. Does this challenge existing frameworks, or is it merely incremental? View economics from both an insider and outsider perspective when answering these questions.",
+
+    "Policymaker": "ROLE: Policymaker. Focus ONLY on real-world utility. Can a central bank or regulator use this? Are there welfare implications, and are they actionable?",
+
+    "Ethicist": "ROLE: Ethicist. Focus ONLY on the adherence of this premise and construction on moral and social values, privacy, consent, fairness, accountability, philosophical implications of the research.",
+
+    "Perspective": "ROLE: Perspective/DEI Expert. Focus ONLY on distributional consequences. Does this dataset contain inherent biases? Does the algorithm lack fairness? How does this impact marginalized groups? Are marginalized groups represented?"
+}
+
+# Build SYSTEM_PROMPTS dict by loading all personas
+SYSTEM_PROMPTS = {
+    persona: load_persona_prompt(persona)
+    for persona in [
+        "Theorist", "Econometrician", "ML_Expert", "Data_Scientist", "CS_Expert",
+        "Historian", "Visionary", "Policymaker", "Ethicist", "Perspective"
+    ]
+}
 
 DEBATE_PROMPTS = {
     "Round_2A_Cross_Examination": """
-    ### CONTEXT
-    You are the {role}. You have read the Round 1 evaluations from your peers:
-    - {peer_1_role} Report: {peer_1_report}
-    - {peer_2_role} Report: {peer_2_report}
+    ### CONTEXT: You are the {role}. Read your peers' Round 1 evaluations:
+    {peer_reports}
 
     ### OBJECTIVE
-    Engage in cross-domain examination. You respect their domains and want to synthesize perspectives to collectively find the objective truth THROUGH DEBATE. If a peer praised something your domain proves flawed, push back and point it out.
+    Engage in cross-domain examination. Employ the **Principle of Charity**: assume your peers' points are valid until proven otherwise, but push back vigorously (yet respectfully) if they violate the truth of your domain.
 
-    ### OUTPUT FORMAT (STRICT)
-    - **Cross-Domain Insights**: [1 paragraph synthesizing how their views change or validate your perspective]
-    - **Constructive Pushback**: [1 paragraph identifying clashes between your domain and theirs]
-    - **Clarification Requests**:
-        - To {peer_1_role}: [1 specific question they must answer]
-        - To {peer_2_role}: [1 specific question they must answer]
+    ### OUTPUT FORMAT
+    - **Insights Absorbed**: [How their views change your perspective]
+    - **Constructive Pushback**: [Clashes between your domain and theirs]
+    - **Clarification Requests**: [Ask 1 specific question to each peer]
     """,
 
     "Round_2B_Direct_Examination": """
-    ### CONTEXT
-    You are the {role}. In the previous round, your peers cross-examined the panel.
-    Here is the transcript of their cross-examinations:
+    ### CONTEXT: You are the {role}. Here are the questions directed at you:
     {r2a_transcript}
 
     ### OBJECTIVE
-    Read the transcript carefully. Identify the specific questions directed AT YOU by your peers. Answer them directly, providing context and TEXTUAL EVIDENCE to address the concerns.
+    Answer the questions directed at you directly using textual evidence. Do not dodge.
 
-    ### OUTPUT FORMAT (STRICT)
-    - **Response to {peer_1_role}**: [Your direct answer to their question]
-    - **Response to {peer_2_role}**: [Your direct answer to their question]
-    - **Concession or Defense**: [Based on answering these, do you concede a flaw, or defend your ground?]
+    ### OUTPUT FORMAT
+    - **Direct Responses**: [Answer each peer's question]
+    - **Concession or Defense**: [Explicitly state if you concede a flaw or defend your ground]
     """,
 
     "Round_2C_Final_Amendment": """
-    ### CONTEXT
-    The debate is over. Here is the full transcript (Round 1, Questions, and Answers):
+    ### CONTEXT: Full Debate Transcript:
     {debate_transcript}
 
     ### OBJECTIVE
-    As the {role}, submit your Final Amended Report. Update your prior beliefs based on valid peer critiques and their answers to your questions. Ensure your verdict reflects error weighting (if applicable) and cross-domain respect.
+    Submit your Final Amended Report.
 
     ### OUTPUT FORMAT
     - **Insights Absorbed**: [How the debate changed your evaluation]
     - **Final Verdict**: [PASS / REVISE / FAIL]
-    - **Final Rationale**: [3-sentence justification explicitly incorporating debate context]
+    - **Final Rationale**: [3-sentence justification incorporating debate context]
     """,
 
     "Round_3_Editor": """
-    ### ROLE
-    You are the Senior Editor. Your job is to calculate the endogenous weighted consensus of the panel and write the final decision letter.
+    ### CONTEXT: You are the Senior Editor. Calculate the endogenous weighted consensus of the panel and write the final decision letter.
 
     ### PANEL CONTEXT & WEIGHTS
-    The following personas were selected for this paper, with these specific weights:
     {weights_json}
 
     ### AMENDED REPORTS
     {final_reports_text}
 
-    ### THE ENDOGENOUS WEIGHTING SYSTEM (STRICT INSTRUCTIONS)
-    Do not use a "Kill Switch" or veto unless explicitly justified. You must calculate the mathematical consensus.
+    ### THE ENDOGENOUS WEIGHTING SYSTEM (STRICT)
     1. Assign values to verdicts: PASS = 1.0, REVISE = 0.5, FAIL = 0.0.
     2. Multiply each persona's value by their assigned weight.
     3. Sum the weighted values to get the Final Consensus Score (out of 1.0).
-    4. Decision Thresholds:
-       - Score > 0.75 : ACCEPT
-       - 0.40 <= Score <= 0.75 : REJECT AND RESUBMIT
-       - Score < 0.40 : REJECT
+    4. Thresholds: > 0.75 : ACCEPT | 0.40 - 0.75 : REJECT AND RESUBMIT | < 0.40 : REJECT
 
     ### OUTPUT FORMAT
-    - **Weight Calculation**: [Show your math explicitly based on the panel's final verdicts]
-    - **Debate Synthesis**: [2-3 sentences summarizing the panel's final alignment]
+    - **Weight Calculation**: [Show math]
+    - **Debate Synthesis**: [2-3 sentences summarizing alignment]
     - **Final Decision**: [ACCEPT / REJECT AND RESUBMIT / REJECT]
-    - **Official Referee Report**: [A synthesized letter to the authors drawing ONLY from the panel's findings. Detail the required fixes or reasons for rejection WITH TEXTUAL/CITED EVIDENCE.]
+    - **Official Referee Report**: [Synthesized letter drawing ONLY from panel findings]
     """
 }
 
@@ -210,16 +289,18 @@ async def call_llm_async(
 
 async def run_round_0_selection(
     paper_text: str,
+    N: int = 3,
     paper_type: Optional[str] = None,
     custom_context: Optional[str] = None,
     manual_personas: Optional[List[str]] = None,
     manual_weights: Optional[Dict[str, float]] = None
 ) -> dict:
     """
-    Round 0: Dynamically selects the 3 most relevant personas and their weights.
+    Round 0: Dynamically selects the N most relevant personas and their weights.
 
     Args:
         paper_text: The paper to evaluate
+        N: Number of personas to select (default 3)
         paper_type: Optional paper type (empirical/theoretical/policy) for context
         custom_context: Optional user-provided evaluation priorities
         manual_personas: If provided, skip LLM selection and use these personas
@@ -228,7 +309,7 @@ async def run_round_0_selection(
     Returns:
         Dictionary with selected_personas, weights, and justification
     """
-    print("[Round 0] Starting persona selection...")
+    print(f"[Round 0] Starting persona selection (N={N})...")
 
     # If manual selection is provided, use it directly
     if manual_personas:
@@ -243,7 +324,7 @@ async def run_round_0_selection(
         else:
             # User provided personas, LLM assigns weights
             print(f"[Round 0] Using manual personas {manual_personas}, LLM will assign weights...")
-            weight_prompt = f"{SELECTION_PROMPT}\n\n"
+            weight_prompt = f"{SELECTION_PROMPT.format(N=len(manual_personas))}\n\n"
             weight_prompt += f"The user has pre-selected these personas: {', '.join(manual_personas)}\n"
             weight_prompt += "Your task is ONLY to assign appropriate weights to these personas (must sum to 1.0).\n\n"
 
@@ -300,7 +381,7 @@ async def run_round_0_selection(
                 }
 
     # Full automatic selection by LLM
-    selection_prompt = f"{SELECTION_PROMPT}\n\n"
+    selection_prompt = f"{SELECTION_PROMPT.format(N=N)}\n\n"
 
     # Add paper type context if available
     if paper_type:
@@ -326,96 +407,171 @@ async def run_round_0_selection(
         personas = selection_data.get("selected_personas", [])
         weights = selection_data.get("weights", {})
 
-        if len(personas) != 3:
-            raise ValueError("LLM did not select exactly 3 personas.")
+        # CRITICAL: Validate that all selected personas exist in SYSTEM_PROMPTS
+        valid_personas = list(SYSTEM_PROMPTS.keys())
+        invalid_personas = [p for p in personas if p not in valid_personas]
+
+        if invalid_personas:
+            print(f"[WARNING] LLM selected invalid personas: {invalid_personas}")
+            print(f"[WARNING] Valid personas are: {valid_personas}")
+            # Filter out invalid personas and normalize weights
+            personas = [p for p in personas if p in valid_personas]
+
+            # If we don't have enough valid personas, fall back to defaults
+            if len(personas) < N:
+                print(f"[WARNING] Only {len(personas)} valid personas, need {N}. Using defaults.")
+                default_personas = ["Econometrician", "ML_Expert", "Policymaker"][:N]
+                equal_weight = round(1.0 / N, 2)
+                return {
+                    "selected_personas": default_personas,
+                    "weights": {p: equal_weight for p in default_personas},
+                    "justification": "Default selection due to invalid LLM selections."
+                }
+
+            # Recalculate weights for valid personas only
+            total_weight = sum(weights.get(p, 0) for p in personas)
+            if total_weight > 0:
+                weights = {p: weights.get(p, 0) / total_weight for p in personas}
+            else:
+                equal_weight = 1.0 / len(personas)
+                weights = {p: equal_weight for p in personas}
+
+        if len(personas) != N:
+            print(f"[WARNING] Requested {N} personas, but LLM returned {len(personas)}.")
+            # Proceed anyway if we got valid data
 
         print(f"[Round 0] Selected personas: {personas}")
         print(f"[Round 0] Weights: {weights}")
-        return selection_data
+        return {
+            "selected_personas": personas,
+            "weights": weights,
+            "justification": selection_data.get("justification", "Selected by LLM based on paper content.")
+        }
 
     except Exception as e:
-        print(f"[Round 0] Failed to parse selection. Defaulting to Empiricist, Historian, Policymaker. Error: {e}")
+        print(f"[Round 0] Failed to parse selection. Defaulting to first {N} personas. Error: {e}")
+        default_personas = ["Econometrician", "ML_Expert", "Policymaker"][:N]
+        equal_weight = round(1.0 / N, 2)
         return {
-            "selected_personas": ["Empiricist", "Historian", "Policymaker"],
-            "weights": {"Empiricist": 0.4, "Historian": 0.3, "Policymaker": 0.3},
+            "selected_personas": default_personas,
+            "weights": {p: equal_weight for p in default_personas},
             "justification": "Default selection due to parsing error."
         }
 
 async def run_round_1(active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 1: Independent evaluation by selected agents."""
-    user_prompt = "Please read the attached paper and provide your Round 1 evaluation based on your role."
+    print("[Round 1] Independent evaluations starting...")
+    user_prompt = "Evaluate this paper based on your role."
 
     tasks = {}
     for role in active_personas:
         tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], user_prompt, role, paper_text, custom_context)
 
-    results = await asyncio.gather(*tasks.values())
-    return dict(zip(tasks.keys(), results))
+    # Use return_exceptions=True to get partial results even if some personas fail
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    # Filter out exceptions and log them
+    successful_results = {}
+    for role, result in zip(tasks.keys(), results):
+        if isinstance(result, Exception):
+            print(f"[Round 1] ERROR: {role} failed with exception: {result}")
+        else:
+            successful_results[role] = result
+
+    print(f"[Round 1] Completed {len(successful_results)}/{len(active_personas)} evaluations")
+    return successful_results
 
 async def run_round_2a(r1_reports: Dict[str, str], active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 2A: Cross-examination between agents."""
+    print("[Round 2A] Cross-examination starting...")
     tasks = {}
     for role in active_personas:
-        peers = [p for p in active_personas if p != role]
+        # Only include peers that successfully completed Round 1
+        peers = [p for p in active_personas if p != role and p in r1_reports]
+        peer_reports_text = "\n".join([f"--- {p} Report ---\n{r1_reports[p]}\n" for p in peers])
+
         prompt_2a = DEBATE_PROMPTS["Round_2A_Cross_Examination"].format(
             role=role,
-            peer_1_role=peers[0],
-            peer_1_report=r1_reports[peers[0]],
-            peer_2_role=peers[1],
-            peer_2_report=r1_reports[peers[1]]
+            peer_reports=peer_reports_text
         )
         tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2a, role, paper_text, custom_context)
 
-    results = await asyncio.gather(*tasks.values())
-    return dict(zip(tasks.keys(), results))
+    # Use return_exceptions=True to get partial results even if some personas fail
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    # Filter out exceptions and log them
+    successful_results = {}
+    for role, result in zip(tasks.keys(), results):
+        if isinstance(result, Exception):
+            print(f"[Round 2A] ERROR: {role} failed with exception: {result}")
+        else:
+            successful_results[role] = result
+
+    print(f"[Round 2A] Completed {len(successful_results)}/{len(active_personas)} cross-examinations")
+    return successful_results
 
 async def run_round_2b(r2a_reports: Dict[str, str], active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 2B: Direct examination - answering clarification questions."""
-    # Build R2A transcript
-    r2a_transcript = ""
-    for role, report in r2a_reports.items():
-        r2a_transcript += f"\n[{role} CROSS-EXAMINATION]:\n{report}\n"
+    print("[Round 2B] Answering clarifications starting...")
+    # Build R2A transcript (only from personas that completed R2A)
+    r2a_transcript = "\n".join([f"[{r} CROSS-EXAMINATION]:\n{text}\n" for r, text in r2a_reports.items()])
 
     tasks = {}
     for role in active_personas:
-        peers = [p for p in active_personas if p != role]
-        prompt_2b = DEBATE_PROMPTS["Round_2B_Direct_Examination"].format(
-            role=role,
-            peer_1_role=peers[0],
-            peer_2_role=peers[1],
-            r2a_transcript=r2a_transcript
-        )
-        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2b, role, paper_text, custom_context)
+        # Only include personas that completed R2A
+        if role in r2a_reports:
+            prompt_2b = DEBATE_PROMPTS["Round_2B_Direct_Examination"].format(
+                role=role,
+                r2a_transcript=r2a_transcript
+            )
+            tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2b, role, paper_text, custom_context)
 
-    results = await asyncio.gather(*tasks.values())
-    return dict(zip(tasks.keys(), results))
+    # Use return_exceptions=True to get partial results even if some personas fail
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    # Filter out exceptions and log them
+    successful_results = {}
+    for role, result in zip(tasks.keys(), results):
+        if isinstance(result, Exception):
+            print(f"[Round 2B] ERROR: {role} failed with exception: {result}")
+        else:
+            successful_results[role] = result
+
+    print(f"[Round 2B] Completed {len(successful_results)}/{len(tasks)} answers")
+    return successful_results
 
 async def run_round_2c(r1_reports: Dict[str, str], r2a_reports: Dict[str, str],
                        r2b_reports: Dict[str, str], active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 2C: Final amendments after full debate."""
-    # Build complete debate transcript
-    transcript = "ROUND 1 REPORTS:\n"
-    for role, report in r1_reports.items():
-        transcript += f"\n[{role}]:\n{report}\n"
-
-    transcript += "\nCROSS-EXAMINATION (R2A):\n"
-    for role, report in r2a_reports.items():
-        transcript += f"\n[{role}]:\n{report}\n"
-
-    transcript += "\nANSWERS & CONCESSIONS (R2B):\n"
-    for role, report in r2b_reports.items():
-        transcript += f"\n[{role}]:\n{report}\n"
+    print("[Round 2C] Final amendments starting...")
+    # Build complete debate transcript (only from personas that completed each round)
+    transcript = "ROUND 1 REPORTS:\n" + "\n".join([f"[{r}]:\n{t}" for r, t in r1_reports.items()])
+    transcript += "\nCROSS-EXAMINATION:\n" + "\n".join([f"[{r}]:\n{t}" for r, t in r2a_reports.items()])
+    transcript += "\nANSWERS:\n" + "\n".join([f"[{r}]:\n{t}" for r, t in r2b_reports.items()])
 
     tasks = {}
     for role in active_personas:
-        prompt_2c = DEBATE_PROMPTS["Round_2C_Final_Amendment"].format(
-            role=role,
-            debate_transcript=transcript
-        )
-        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2c, role, paper_text, custom_context)
+        # Only include personas that completed all previous rounds
+        if role in r1_reports and role in r2a_reports and role in r2b_reports:
+            prompt_2c = DEBATE_PROMPTS["Round_2C_Final_Amendment"].format(
+                role=role,
+                debate_transcript=transcript
+            )
+            tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2c, role, paper_text, custom_context)
 
-    results = await asyncio.gather(*tasks.values())
-    return dict(zip(tasks.keys(), results))
+    # Use return_exceptions=True to get partial results even if some personas fail
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    # Filter out exceptions and log them
+    successful_results = {}
+    for role, result in zip(tasks.keys(), results):
+        if isinstance(result, Exception):
+            print(f"[Round 2C] ERROR: {role} failed with exception: {result}")
+        else:
+            successful_results[role] = result
+
+    print(f"[Round 2C] Completed {len(successful_results)}/{len(tasks)} final reports")
+    return successful_results
 
 def extract_verdict_from_report(report: str) -> str:
     """Extract the final verdict from a Round 2C report."""
@@ -483,6 +639,7 @@ def calculate_consensus(r2c_reports: Dict[str, str], selection_data: dict) -> di
 
 async def run_round_3(r2c_reports: Dict[str, str], selection_data: dict) -> str:
     """Round 3: Editor synthesizes with weighted consensus."""
+    print("[Round 3] Editor decision starting...")
     weights_json = json.dumps(selection_data["weights"], indent=2)
 
     final_reports_text = ""
@@ -495,7 +652,9 @@ async def run_round_3(r2c_reports: Dict[str, str], selection_data: dict) -> str:
     )
 
     system_prompt = "You are the Senior Editor. Follow the mathematical weighting instructions strictly."
-    return await asyncio.to_thread(single_query, f"{system_prompt}\n\n{prompt_3}")
+    result = await asyncio.to_thread(single_query, f"{system_prompt}\n\n{prompt_3}")
+    print("[Round 3] Editor decision completed")
+    return result
 
 def calculate_token_usage_and_cost(paper_text: str, results: Dict, num_personas: int = 3) -> Dict:
     """
@@ -598,334 +757,131 @@ def calculate_token_usage_and_cost(paper_text: str, results: Dict, num_personas:
             'output': round(output_cost, 4),
             'total': round(total_cost, 4)
         },
-        'pricing': {
-            'input_per_million': input_cost_per_million,
-            'output_per_million': output_cost_per_million,
-            'model': MODEL_PRIMARY  # From config.py
-        }
+        'model': MODEL_PRIMARY
     }
 
+# ==========================================
+# MAIN PIPELINE
+# ==========================================
 async def execute_debate_pipeline(
     paper_text: str,
     progress_callback=None,
-    paper_context: str = None,
-    model_key: str = None,
-    temperature: float = None,
     paper_type: Optional[str] = None,
     custom_context: Optional[str] = None,
     manual_personas: Optional[List[str]] = None,
     manual_weights: Optional[Dict[str, float]] = None,
+    enable_quote_validation: bool = True,
     use_cache: bool = True,
-    cache_dir: Optional[Path] = None,
     force_refresh: bool = False
-):
+) -> Dict:
     """
-    Orchestrates the entire multi-agent debate workflow with endogenous persona selection.
+    Execute the complete multi-agent debate pipeline.
 
     Args:
-        paper_text: The full text of the paper to evaluate
+        paper_text: The paper text to evaluate
         progress_callback: Optional callback function to report progress
-        paper_context: Optional additional context about the paper (deprecated, use custom_context)
-        model_key: Optional model selection key (currently unused)
-        temperature: Optional temperature setting (currently unused)
-        paper_type: Optional paper type (empirical/theoretical/policy) for persona selection guidance
-        custom_context: Optional user-provided evaluation priorities and focus areas
-        manual_personas: Optional list of manually selected personas (2-5 personas)
-        manual_weights: Optional dict of manually specified weights for manual_personas
-        use_cache: Whether to use cached results if available (default: True)
-        cache_dir: Optional custom cache directory (default: .referee_cache)
-        force_refresh: Force recomputation even if cache exists (default: False)
+        paper_type: Optional paper type for context
+        custom_context: Optional user evaluation priorities
+        manual_personas: Optional manual persona selection
+        manual_weights: Optional manual weight assignment
+        enable_quote_validation: Whether to run quote validation
+        use_cache: Whether to use cached results (not implemented in exp_4)
+        force_refresh: Force recomputation even if cache exists (not implemented in exp_4)
 
     Returns:
-        Dictionary containing all round results, selection data, and final decision
+        Dictionary containing all round outputs and metadata
     """
-    # Import cache utilities
-    from referee._utils.cache import (
-        compute_cache_key,
-        save_round_results,
-        load_round_results,
-        check_cache_status
-    )
-
-    # Capture start time
     start_time = datetime.datetime.now()
 
-    results = {}
-
-    # Initialize cache tracking
-    cache_hits = {}  # Track which rounds were cached
-    cache_key_round0 = None  # Cache key before persona selection
-    cache_key_final = None   # Cache key after persona selection
-
-    # Compute initial cache key (without personas for Round 0)
-    if use_cache and not force_refresh:
-        cache_key_round0 = compute_cache_key(
-            paper_text=paper_text,
-            model_name=MODEL_PRIMARY,
-            paper_type=paper_type,
-            custom_context=custom_context,
-            selected_personas=manual_personas,
-            weights=manual_weights
-        )
-
-    # Round 0: Persona Selection
+    # Round 0: Selection
     if progress_callback:
         progress_callback("Round 0: Selecting Personas", 0.05)
 
-    # Try to load Round 0 from cache
-    if use_cache and not force_refresh and cache_key_round0:
-        cached_round0 = load_round_results(cache_key_round0, 0, cache_dir)
-        if cached_round0:
-            selection_data = cached_round0
-            cache_hits['round_0'] = True
-            print("[Round 0] Cache HIT - using cached persona selection")
-        else:
-            cache_hits['round_0'] = False
-            selection_data = None
-    else:
-        cache_hits['round_0'] = False
-        selection_data = None
-
-    # Run Round 0 if not cached
-    if selection_data is None:
-        selection_data = await run_round_0_selection(
-            paper_text,
-            paper_type=paper_type,
-            custom_context=custom_context,
-            manual_personas=manual_personas,
-            manual_weights=manual_weights
-        )
-
-        # Save Round 0 to cache
-        if use_cache and cache_key_round0:
-            metadata = {
-                'timestamp': start_time.isoformat(),
-                'paper_hash': hashlib.sha256(paper_text.encode()).hexdigest()[:16],
-                'model': MODEL_PRIMARY,
-                'paper_type': paper_type,
-                'custom_context_provided': bool(custom_context),
-                'manual_selection': bool(manual_personas)
-            }
-            save_round_results(cache_key_round0, 0, selection_data, cache_dir, metadata)
-
+    selection_data = await run_round_0_selection(
+        paper_text,
+        N=3,
+        paper_type=paper_type,
+        custom_context=custom_context,
+        manual_personas=manual_personas,
+        manual_weights=manual_weights
+    )
     active_personas = selection_data["selected_personas"]
-    results['round_0'] = selection_data
 
-    # Compute final cache key with selected personas and weights
-    if use_cache:
-        cache_key_final = compute_cache_key(
-            paper_text=paper_text,
-            selected_personas=active_personas,
-            weights=selection_data["weights"],
-            model_name=MODEL_PRIMARY,
-            paper_type=paper_type,
-            custom_context=custom_context
-        )
-        print(f"[Cache] Final cache key: {cache_key_final[:16]}...")
-
-    # Round 1: Independent Evaluation
+    # Round 1: Independent evaluations
     if progress_callback:
         progress_callback("Round 1: Independent Evaluation", 0.15)
 
-    # Try to load Round 1 from cache
-    if use_cache and not force_refresh and cache_key_final:
-        cached_round1 = load_round_results(cache_key_final, 1, cache_dir)
-        if cached_round1:
-            results['round_1'] = cached_round1
-            cache_hits['round_1'] = True
-            print("[Round 1] Cache HIT - using cached reports")
-        else:
-            cache_hits['round_1'] = False
-            results['round_1'] = await run_round_1(active_personas, paper_text, custom_context)
-            # Save to cache
-            save_round_results(cache_key_final, 1, results['round_1'], cache_dir)
-    else:
-        cache_hits['round_1'] = False
-        results['round_1'] = await run_round_1(active_personas, paper_text, custom_context)
-        if use_cache and cache_key_final:
-            save_round_results(cache_key_final, 1, results['round_1'], cache_dir)
+    r1_reports = await run_round_1(active_personas, paper_text, custom_context)
 
-    # Validate quotes in Round 1 reports
-    if should_enable_quote_validation():
-        if progress_callback:
-            progress_callback("Validating Round 1 quotes...", 0.25)
-        try:
-            from referee._utils.quote_validator import validate_quotes_in_reports, get_validation_summary
-            results['round_1_quote_validation'] = validate_quotes_in_reports(
-                results['round_1'],
-                paper_text
-            )
-            results['round_1_validation_summary'] = get_validation_summary(results['round_1_quote_validation'])
-            print(f"[Round 1] Quote validation: {results['round_1_validation_summary']['valid_quotes']}/{results['round_1_validation_summary']['total_quotes_found']} quotes verified")
-        except Exception as e:
-            print(f"[Round 1] Quote validation failed: {e}")
-            results['round_1_quote_validation'] = None
-            results['round_1_validation_summary'] = {'error': str(e)}
-
-    # Round 2A: Cross-Examination
+    # Round 2A: Cross-examination
     if progress_callback:
         progress_callback("Round 2A: Cross-Examination", 0.35)
 
-    # Try to load Round 2A from cache
-    if use_cache and not force_refresh and cache_key_final:
-        cached_round2a = load_round_results(cache_key_final, "2a", cache_dir)
-        if cached_round2a:
-            results['round_2a'] = cached_round2a
-            cache_hits['round_2a'] = True
-            print("[Round 2A] Cache HIT - using cached cross-examination")
-        else:
-            cache_hits['round_2a'] = False
-            results['round_2a'] = await run_round_2a(results['round_1'], active_personas, paper_text, custom_context)
-            save_round_results(cache_key_final, "2a", results['round_2a'], cache_dir)
-    else:
-        cache_hits['round_2a'] = False
-        results['round_2a'] = await run_round_2a(results['round_1'], active_personas, paper_text, custom_context)
-        if use_cache and cache_key_final:
-            save_round_results(cache_key_final, "2a", results['round_2a'], cache_dir)
+    r2a_reports = await run_round_2a(r1_reports, active_personas, paper_text, custom_context)
 
-    # Round 2B: Direct Examination
+    # Round 2B: Direct examination
     if progress_callback:
         progress_callback("Round 2B: Answering Questions", 0.55)
 
-    # Try to load Round 2B from cache
-    if use_cache and not force_refresh and cache_key_final:
-        cached_round2b = load_round_results(cache_key_final, "2b", cache_dir)
-        if cached_round2b:
-            results['round_2b'] = cached_round2b
-            cache_hits['round_2b'] = True
-            print("[Round 2B] Cache HIT - using cached answers")
-        else:
-            cache_hits['round_2b'] = False
-            results['round_2b'] = await run_round_2b(results['round_2a'], active_personas, paper_text, custom_context)
-            save_round_results(cache_key_final, "2b", results['round_2b'], cache_dir)
-    else:
-        cache_hits['round_2b'] = False
-        results['round_2b'] = await run_round_2b(results['round_2a'], active_personas, paper_text, custom_context)
-        if use_cache and cache_key_final:
-            save_round_results(cache_key_final, "2b", results['round_2b'], cache_dir)
+    r2b_reports = await run_round_2b(r2a_reports, active_personas, paper_text, custom_context)
 
-    # Round 2C: Final Amendments
+    # Round 2C: Final amendments
     if progress_callback:
         progress_callback("Round 2C: Final Amendments", 0.75)
 
-    # Try to load Round 2C from cache
-    if use_cache and not force_refresh and cache_key_final:
-        cached_round2c = load_round_results(cache_key_final, "2c", cache_dir)
-        if cached_round2c:
-            results['round_2c'] = cached_round2c
-            cache_hits['round_2c'] = True
-            print("[Round 2C] Cache HIT - using cached amendments")
-        else:
-            cache_hits['round_2c'] = False
-            results['round_2c'] = await run_round_2c(
-                results['round_1'],
-                results['round_2a'],
-                results['round_2b'],
-                active_personas,
-                paper_text,
-                custom_context
-            )
-            save_round_results(cache_key_final, "2c", results['round_2c'], cache_dir)
-    else:
-        cache_hits['round_2c'] = False
-        results['round_2c'] = await run_round_2c(
-            results['round_1'],
-            results['round_2a'],
-            results['round_2b'],
-            active_personas,
-            paper_text,
-            custom_context
-        )
-        if use_cache and cache_key_final:
-            save_round_results(cache_key_final, "2c", results['round_2c'], cache_dir)
+    r2c_reports = await run_round_2c(r1_reports, r2a_reports, r2b_reports, active_personas, paper_text, custom_context)
 
-    # Validate quotes in Round 2C reports
-    if should_enable_quote_validation():
-        if progress_callback:
-            progress_callback("Validating Round 2C quotes...", 0.82)
-        try:
-            from referee._utils.quote_validator import validate_quotes_in_reports, get_validation_summary
-            results['round_2c_quote_validation'] = validate_quotes_in_reports(
-                results['round_2c'],
-                paper_text
-            )
-            results['round_2c_validation_summary'] = get_validation_summary(results['round_2c_quote_validation'])
-            print(f"[Round 2C] Quote validation: {results['round_2c_validation_summary']['valid_quotes']}/{results['round_2c_validation_summary']['total_quotes_found']} quotes verified")
-        except Exception as e:
-            print(f"[Round 2C] Quote validation failed: {e}")
-            results['round_2c_quote_validation'] = None
-            results['round_2c_validation_summary'] = {'error': str(e)}
-
-    # Round 2.5: Cross-Reference Deduplication
-    if progress_callback:
-        progress_callback("Round 2.5: Deduplicating Findings", 0.87)
-
-    try:
-        from referee._utils.deduplicator import deduplicate_findings, get_dedup_config
-        dedup_config = get_dedup_config()
-
-        if dedup_config['enabled']:
-            print("[Round 2.5] Starting cross-reference deduplication...")
-            dedup_results = deduplicate_findings(
-                reports=results['round_2c'],
-                paper_text=paper_text,
-                similarity_threshold=dedup_config['similarity_threshold'],
-                preserve_distinct=dedup_config['preserve_distinct']
-            )
-
-            results['deduplication'] = dedup_results
-            print(f"[Round 2.5] Deduplication complete: {dedup_results['statistics']['total_findings_before']} → {dedup_results['statistics']['total_findings_after']} findings")
-        else:
-            print("[Round 2.5] Deduplication disabled by configuration")
-            results['deduplication'] = {
-                'deduplicated_findings': [],
-                'statistics': {'enabled': False},
-                'clusters': []
-            }
-    except Exception as e:
-        print(f"[Round 2.5] Deduplication failed: {e}")
-        import traceback
-        traceback.print_exc()
-        results['deduplication'] = {
-            'deduplicated_findings': [],
-            'statistics': {'enabled': True, 'error': str(e)},
-            'clusters': []
-        }
-
-    # Calculate consensus before Round 3
-    results['consensus'] = calculate_consensus(results['round_2c'], selection_data)
-
-    # Round 3: Editor Decision
+    # Round 3: Editor decision
     if progress_callback:
         progress_callback("Round 3: Editor Decision", 0.90)
 
-    # Try to load Round 3 from cache
-    if use_cache and not force_refresh and cache_key_final:
-        cached_round3 = load_round_results(cache_key_final, 3, cache_dir)
-        if cached_round3:
-            results['final_decision'] = cached_round3
-            cache_hits['round_3'] = True
-            print("[Round 3] Cache HIT - using cached editor decision")
-        else:
-            cache_hits['round_3'] = False
-            results['final_decision'] = await run_round_3(results['round_2c'], selection_data)
-            save_round_results(cache_key_final, 3, results['final_decision'], cache_dir)
-    else:
-        cache_hits['round_3'] = False
-        results['final_decision'] = await run_round_3(results['round_2c'], selection_data)
-        if use_cache and cache_key_final:
-            save_round_results(cache_key_final, 3, results['final_decision'], cache_dir)
+    final_decision = await run_round_3(r2c_reports, selection_data)
 
-    # Capture end time and add metadata
+    # Calculate consensus
+    consensus_data = calculate_consensus(r2c_reports, selection_data)
+
+    # Quote validation (if enabled)
+    quote_validation_results = {}
+    if enable_quote_validation and should_enable_quote_validation():
+        if progress_callback:
+            progress_callback("Validating quotes...", 0.95)
+
+        try:
+            from referee._utils.quote_validator import validate_quotes_in_reports
+            print("[Quote Validation] Running validation...")
+
+            # Validate Round 1 reports
+            r1_validation = validate_quotes_in_reports(
+                reports=r1_reports,
+                paper_text=paper_text
+            )
+
+            # Validate Round 2C reports
+            r2c_validation = validate_quotes_in_reports(
+                reports=r2c_reports,
+                paper_text=paper_text
+            )
+
+            # Combine results
+            quote_validation_results = {
+                'round_1': r1_validation,
+                'round_2c': r2c_validation
+            }
+
+            total_personas = len(r1_validation) + len(r2c_validation)
+            print(f"[Quote Validation] Completed: {total_personas} reports validated (R1: {len(r1_validation)}, R2C: {len(r2c_validation)})")
+        except ImportError:
+            print("[Quote Validation] Skipped: thefuzz library not installed")
+        except Exception as e:
+            print(f"[Quote Validation] Error: {e}")
+
     end_time = datetime.datetime.now()
-    runtime_seconds = (end_time - start_time).total_seconds()
+    duration = (end_time - start_time).total_seconds()
 
-    # Calculate token usage and cost
-    token_cost_data = calculate_token_usage_and_cost(
-        paper_text,
-        results,
-        num_personas=len(active_personas)
-    )
+    # Format duration as MM:SS
+    minutes = int(duration // 60)
+    seconds = int(duration % 60)
+    duration_formatted = f"{minutes:02d}:{seconds:02d}"
 
     # Load prompt versions from config
     prompt_versions = {}
@@ -942,64 +898,50 @@ async def execute_debate_pipeline(
     except Exception as e:
         prompt_versions['error'] = f'Could not load prompt versions: {e}'
 
-    # Add quote validation to metadata
-    quote_validation_meta = {
-        'enabled': should_enable_quote_validation(),
-        'round_1': results.get('round_1_validation_summary', {}),
-        'round_2c': results.get('round_2c_validation_summary', {})
-    }
-
-    # Add deduplication stats to metadata
-    dedup_stats = results.get('deduplication', {}).get('statistics', {})
-    dedup_meta = {
-        'enabled': dedup_stats.get('enabled', False),
-        'total_findings_before': dedup_stats.get('total_findings_before', 0),
-        'total_findings_after': dedup_stats.get('total_findings_after', 0),
-        'clusters_merged': dedup_stats.get('clusters_merged', 0),
-        'reduction_rate': dedup_stats.get('reduction_rate', 0.0),
-        'embeddings_available': dedup_stats.get('embeddings_available', False),
-    }
-
-    # Calculate cache statistics
-    total_rounds = 6  # Round 0, 1, 2A, 2B, 2C, 3
-    cached_rounds = sum(1 for hit in cache_hits.values() if hit)
-    cache_hit_rate = cached_rounds / total_rounds if total_rounds > 0 else 0.0
-
-    # Estimate cost savings from cache
-    if cached_rounds > 0:
-        # Rough estimate: each round costs ~15-20% of total
-        estimated_cost_per_round = token_cost_data['cost_usd']['total'] / total_rounds
-        estimated_savings = estimated_cost_per_round * cached_rounds
-    else:
-        estimated_savings = 0.0
-
-    results['metadata'] = {
-        'start_time': start_time.strftime("%Y-%m-%d %H:%M:%S"),
-        'end_time': end_time.strftime("%Y-%m-%d %H:%M:%S"),
-        'total_runtime_seconds': runtime_seconds,
-        'total_runtime_formatted': f"{int(runtime_seconds // 60)}m {int(runtime_seconds % 60)}s",
-        'model_version': MODEL_PRIMARY,  # From config.py
-        'temperature': temperature if temperature is not None else 0.7,  # Default from single_query
-        'thinking_enabled': False,  # Not currently enabled in single_query
-        'thinking_budget_tokens': 0,  # Not used
-        'max_retries': 3,  # From single_query default
-        'retry_delay_seconds': 5,  # From single_query default
-        'prompt_versions': prompt_versions,
-        'token_usage': token_cost_data,  # Add full token and cost data
-        'quote_validation': quote_validation_meta,  # Add quote validation stats
-        'deduplication': dedup_meta,  # Add deduplication stats
-        'cache': {
-            'enabled': use_cache,
-            'cache_key': cache_key_final,
-            'cache_hits': cache_hits,
-            'total_rounds': total_rounds,
-            'cached_rounds': cached_rounds,
-            'cache_hit_rate': round(cache_hit_rate, 2),
-            'estimated_savings_usd': round(estimated_savings, 4) if not force_refresh else 0.0
+    # Package results
+    results = {
+        'selection': selection_data,
+        'round_0': selection_data,  # Alias for compatibility
+        'round_1': r1_reports,
+        'round_2a': r2a_reports,
+        'round_2b': r2b_reports,
+        'round_2c': r2c_reports,
+        'final_decision': final_decision,
+        'consensus': consensus_data,
+        'metadata': {
+            'timestamp': start_time.isoformat(),
+            'start_time': start_time.strftime('%Y-%m-%d %H:%M:%S'),
+            'duration_seconds': duration,
+            'total_runtime_formatted': duration_formatted,
+            'num_personas': len(active_personas),
+            'model': MODEL_PRIMARY,
+            'model_version': MODEL_PRIMARY,  # Alias for Excel export
+            'api_base': API_BASE,
+            'temperature': 1.0,  # From single_query in utils.py
+            'thinking_enabled': True,
+            'thinking_budget_tokens': 2048,
+            'max_retries': 3,
+            'retry_delay_seconds': 5,
+            'prompt_versions': prompt_versions
         }
     }
 
+    # Add quote validation results at top level if available
+    if quote_validation_results:
+        results['round_1_quote_validation'] = quote_validation_results.get('round_1', {})
+        results['round_2c_quote_validation'] = quote_validation_results.get('round_2c', {})
+        results['metadata']['quote_validation'] = {
+            'enabled': True,
+            'rounds_validated': ['round_1', 'round_2c']
+        }
+
+    # Calculate token usage
+    token_usage = calculate_token_usage_and_cost(paper_text, results, len(active_personas))
+    results['metadata']['token_usage'] = token_usage
+
     if progress_callback:
         progress_callback("Complete!", 1.0)
+
+    print(f"\n[Pipeline Complete] Duration: {duration:.1f}s | Cost: ${token_usage['cost_usd']['total']:.4f}")
 
     return results
