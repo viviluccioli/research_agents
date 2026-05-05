@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; if [[ \"$f\" == *.py ]]; then cd /casl/home/m1vcl00/FS-CASL/research_agents && python3 -m pytest app_system/tests/; fi; }",
+            "statusMessage": "Running tests...",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -35,7 +35,7 @@ class ExperimentConfig:
     """Configuration for the persona selection experiment."""
 
     # Model Configuration
-    MODEL = MODEL_SECONDARY  # Claude 4.5 Sonnet (used by referee system)
+    MODEL = MODEL_PRIMARY  # Claude 3.7 Sonnet (used by referee system)
     TEMPERATURE = 1.0  # Default temperature for thinking mode
     MAX_TOKENS = 4096  # Maximum tokens for response
 

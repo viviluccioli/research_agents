@@ -210,10 +210,22 @@ DEBATE_PROMPTS = {
     ### OBJECTIVE
     Submit your Final Amended Report.
 
-    ### OUTPUT FORMAT
-    - **Insights Absorbed**: [How the debate changed your evaluation]
+    ⚠️ **CRITICAL: You MUST include BOTH your Final Verdict AND Final Score in the output below.**
+
+    ### MANDATORY OUTPUT FORMAT (include these exact lines first):
+    ```
     - **Final Verdict**: [PASS / REVISE / FAIL]
+    - **Final Score**: [X/10]
+    ```
+
+    Then provide:
+    - **Insights Absorbed**: [How the debate changed your evaluation]
     - **Final Rationale**: [3-sentence justification incorporating debate context]
+
+    Score Scale Reminder:
+    - 1-3 = FAIL zone
+    - 4-7 = REVISE zone
+    - 8-10 = PASS zone
     """,
 
     "Round_3_Editor": """
@@ -461,7 +473,33 @@ async def run_round_0_selection(
 async def run_round_1(active_personas: list, paper_text: str, custom_context: Optional[str] = None) -> Dict[str, str]:
     """Round 1: Independent evaluation by selected agents."""
     print("[Round 1] Independent evaluations starting...")
-    user_prompt = "Evaluate this paper based on your role."
+
+    # Updated prompt to request numeric score
+    user_prompt = """Evaluate this paper based on your role.
+
+⚠️ **REQUIRED: You MUST provide both a categorical verdict AND a numeric quality score.**
+
+**SCORING REQUIREMENT**: Rate the paper's quality within your domain on a 1-10 scale:
+- **1-3 (FAIL zone)**: Fatal flaws, fundamental problems, reject
+- **4-7 (REVISE zone)**: Significant to moderate issues, needs revision
+- **8-10 (PASS zone)**: Minor issues to exceptional, accept
+
+Your score reflects the paper's quality in your domain, NOT your confidence in the verdict.
+
+**MANDATORY OUTPUT FORMAT** (include these exact lines):
+```
+- **Verdict**: [PASS/REVISE/FAIL]
+- **Score**: [X/10]
+```
+
+[Then continue with your domain audit]
+
+Example:
+```
+- **Verdict**: REVISE
+- **Score**: 6/10
+```
+"""
 
     tasks = {}
     for role in active_personas:
@@ -604,36 +642,111 @@ def extract_verdict_from_report(report: str) -> str:
 
     return "UNKNOWN"
 
+
+def extract_score_from_report(report: str) -> Optional[float]:
+    """
+    Extract the numeric score from a report.
+
+    Looks for patterns like:
+    - **Final Score**: 7/10
+    - **Score**: 8/10
+    - Score: 6/10
+    - **Final Score**: 8 (without /10)
+
+    Returns:
+        Score as float (1-10), or None if not found
+    """
+    # Try to find "Final Score:" or "Score:" first (with /10)
+    score_patterns_with_denominator = [
+        r'\*\*Final Score\*\*\s*:+\s*([0-9\.]+)\s*/\s*10',
+        r'Final Score\s*:+\s*([0-9\.]+)\s*/\s*10',
+        r'\*\*Score\*\*\s*:+\s*([0-9\.]+)\s*/\s*10',
+        r'Score\s*:+\s*([0-9\.]+)\s*/\s*10',
+        # Keep these for backwards compatibility with old format
+        r'\*\*Confidence Score\*\*\s*:+\s*([0-9\.]+)\s*/\s*10',
+        r'Confidence Score\s*:+\s*([0-9\.]+)\s*/\s*10',
+    ]
+
+    for pattern in score_patterns_with_denominator:
+        match = re.search(pattern, report, re.IGNORECASE)
+        if match:
+            try:
+                score = float(match.group(1))
+                # Validate range
+                if 1 <= score <= 10:
+                    return score
+            except ValueError:
+                continue
+
+    # Fallback: try patterns without /10 (must be followed by whitespace or end of line)
+    score_patterns_without_denominator = [
+        r'\*\*Final Score\*\*\s*:+\s*([0-9\.]+)(?:\s|$)',
+        r'Final Score\s*:+\s*([0-9\.]+)(?:\s|$)',
+        r'\*\*Score\*\*\s*:+\s*([0-9\.]+)(?:\s|$)',
+        r'Score\s*:+\s*([0-9\.]+)(?:\s|$)',
+        # Keep these for backwards compatibility
+        r'\*\*Confidence Score\*\*\s*:+\s*([0-9\.]+)(?:\s|$)',
+        r'Confidence Score\s*:+\s*([0-9\.]+)(?:\s|$)',
+    ]
+
+    for pattern in score_patterns_without_denominator:
+        match = re.search(pattern, report, re.IGNORECASE)
+        if match:
+            try:
+                score = float(match.group(1))
+                # Validate range
+                if 1 <= score <= 10:
+                    return score
+            except ValueError:
+                continue
+
+    return None
+
 def calculate_consensus(r2c_reports: Dict[str, str], selection_data: dict) -> dict:
     """Calculate the weighted consensus from Round 2C reports."""
     weights = selection_data["weights"]
     verdicts = {}
+    scores = {}
 
-    # Extract verdict from each report
+    # Extract verdict and score from each report
     for role, report in r2c_reports.items():
         verdict = extract_verdict_from_report(report)
+        score = extract_score_from_report(report)
         verdicts[role] = verdict
+        scores[role] = score
 
-    # Calculate weighted score
+    # Calculate weighted score (categorical method)
     verdict_values = {"PASS": 1.0, "REVISE": 0.5, "FAIL": 0.0, "REJECT": 0.0, "UNKNOWN": 0.0}
-    weighted_score = 0.0
+    weighted_score_categorical = 0.0
 
     for role, verdict in verdicts.items():
         weight = weights.get(role, 0)
         value = verdict_values.get(verdict, 0.0)
-        weighted_score += weight * value
+        weighted_score_categorical += weight * value
 
-    # Determine decision based on thresholds
-    if weighted_score > 0.75:
+    # Calculate weighted score (numeric method if scores available)
+    weighted_score_numeric = None
+    if all(score is not None for score in scores.values()):
+        # Normalize scores to 0-1 scale (divide by 10)
+        weighted_score_numeric = 0.0
+        for role, score in scores.items():
+            weight = weights.get(role, 0)
+            weighted_score_numeric += weight * (score / 10.0)
+
+    # Determine decision based on thresholds (using categorical)
+    if weighted_score_categorical > 0.75:
         decision = "ACCEPT"
-    elif weighted_score >= 0.40:
+    elif weighted_score_categorical >= 0.40:
         decision = "REJECT AND RESUBMIT"
     else:
         decision = "REJECT"
 
     return {
         "verdicts": verdicts,
-        "weighted_score": weighted_score,
+        "scores": scores,
+        "weighted_score": weighted_score_categorical,  # For backwards compatibility
+        "weighted_score_categorical": weighted_score_categorical,
+        "weighted_score_numeric": weighted_score_numeric,
         "decision": decision
     }
 

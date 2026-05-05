@@ -3,7 +3,7 @@
 A Streamlit application that evaluates academic economics papers using two complementary workflows:
 
 1. **Section Evaluator** — Criteria-based evaluation of individual paper sections, weighted by paper type (empirical, theoretical, policy) and section importance.
-2. **Multi-Agent Referee** — Simulated peer review via structured debate between specialized AI personas (Theorist, Empiricist, Historian, Visionary, Policymaker).
+2. **Multi-Agent Referee** — Simulated peer review via structured debate between 10 specialized AI personas (automatic selection of 3 most relevant reviewers per paper).
 
 The full application lives in `app_system/`.
 
@@ -12,12 +12,13 @@ The full application lives in `app_system/`.
 ## Key Features
 
 ### Referee Report System
-- ⚙️ **Dual output modes**: Full output (14 API calls) or with LLM summarization (+10-15 calls for cleaner display)
+- 👥 **10 specialized personas**: Automatic selection of 3 most relevant reviewers from pool of 10 (Theorist, Econometrician, ML_Expert, Data_Scientist, CS_Expert, Historian, Visionary, Policymaker, Ethicist, Perspective)
+- 🗣️ **5-round debate**: Independent analysis → cross-examination → responses → amendments → editor synthesis
+- 🎯 **Weighted consensus**: Mathematical aggregation using importance weights (configurable per persona)
 - 💰 **Automatic cost tracking**: Real-time token usage and cost estimation (input/output tokens, estimated USD)
 - 📊 **Enhanced PDF extraction**: Automatic table extraction and markdown formatting
-- 👥 **Configurable personas**: 5 specialized AI reviewers (Theorist, Empiricist, Historian, Visionary, Policymaker) — 3 selected per paper
-- 🎯 **Weighted consensus**: Mathematical aggregation using importance weights
-- 📦 **Multiple export formats**: Markdown transcript and ZIP package downloads
+- ✅ **Quote validation**: Prevents hallucinated evidence with fuzzy matching verification
+- 📦 **Multiple export formats**: Markdown transcript, Excel workbook, and ZIP package downloads
 
 ### Section Evaluator
 - 🔍 **Auto-detection**: Two-pass section detection (heuristic scoring + LLM confirmation)
@@ -207,7 +208,7 @@ research_agents/
 | Model (all systems) | `app_system/config.py` | **Claude 4.5 Sonnet** |
 | MAD model | `app_system/utils.py:model_selection3` | Claude 4.5 Sonnet (was 3.7) |
 | Section eval model | `app_system/utils.py:model_selection` | Claude 4.5 Sonnet |
-| Referee personas | `app_system/referee/engine.py:SYSTEM_PROMPTS` | 5 personas (3 selected per paper) |
+| Referee personas | `app_system/referee/engine.py:SYSTEM_PROMPTS` | 10 personas (3 selected per paper) |
 | Referee output mode | UI toggle in app | Full output (14 calls) or with summarization (+10-15 calls) |
 | Token/cost tracking | `app_system/referee/engine.py` | Automatic estimation with detailed breakdown |
 | Fatal-flaw threshold | `app_system/section_eval/criteria/base.py` | score ≤ 1.5 → cap at 2.5 |

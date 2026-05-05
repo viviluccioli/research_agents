@@ -27,19 +27,21 @@ source ../venv/bin/activate
 streamlit run app.py
 ```
 
-Or use the provided script (disables file watcher to avoid inotify limits):
-
-```bash
-cd app_system
-bash run_app.sh
-```
-
 To run demo apps:
 
 ```bash
 cd app_system
 streamlit run demos/app_demo.py
 streamlit run demos/app_demo2.py
+```
+
+To run the experimental 10-persona system (Experiment 4):
+
+```bash
+cd app_system
+bash run_app_exp_4.sh  # Disables file watcher to avoid inotify limits
+# Or directly:
+streamlit run app_exp_4.py
 ```
 
 ## Setup
@@ -80,29 +82,56 @@ The `app_system/` directory follows standard Python package organization:
 
 ```
 app_system/
-├── app.py                        # Main entry point (tabbed UI)
-├── utils.py                      # Shared utilities
-├── run_app.sh                    # Launch helper
+├── app.py                        # Main entry point (5-persona MAD system)
+├── app_exp_4.py                  # Experiment 4 entry point (10-persona MAD)
+├── app-memo.py                   # Memo evaluation system (5 memo-specific analysts)
+├── utils.py                      # Shared utilities (LLM calls, token counting)
+├── config.py                     # API configuration loader (.env)
 ├── README.md                     # User-facing documentation
+├── run_app_exp_4.sh              # Launch script for Experiment 4
 │
-├── referee/                      # Referee report package
+├── referee/                      # Referee report package (MAD system)
 │   ├── __init__.py              # Package exports
-│   ├── core.py                  # Full output version (RefereeReportChecker)
-│   ├── summarized.py            # Summarized version (RefereeReportCheckerSummarized)
-│   ├── debate.py                # Multi-agent debate orchestration
-│   └── summarizer.py            # LLM output compression
+│   ├── workflow.py              # Main production UI (RefereeWorkflow)
+│   ├── engine.py                # 5-persona debate orchestration
+│   ├── engine_exp_4.py          # 10-persona debate orchestration
+│   ├── workflow_exp_4.py        # UI for 10-persona system
+│   ├── memo_engine.py           # Memo evaluation engine (wraps engine.py)
+│   ├── memo_prompts.py          # 5 memo-specific analyst personas
+│   ├── _utils/                  # Internal utilities (not main API)
+│   │   ├── summarizer.py        # LLM output compression
+│   │   ├── quote_validator.py   # Quote hallucination prevention
+│   │   ├── cache.py             # Granular per-round caching
+│   │   ├── deduplicator.py      # Cross-reference deduplication
+│   │   └── pdf_extractor_v2.py  # PyMuPDF-based PDF+figure extraction
+│   └── _archived/               # Archived implementations
+│       └── full_output_ui.py    # Old full-output UI
 │
 ├── section_eval/                 # Section evaluator package
 │   ├── __init__.py
 │   ├── main.py                  # SectionEvaluatorApp
-│   ├── evaluator.py
-│   ├── scoring.py
+│   ├── evaluator.py             # Section evaluation logic
+│   ├── scoring.py               # Score computation + fatal-flaw logic
+│   ├── section_detection.py     # Two-pass section detection
+│   ├── text_extraction.py       # PDF/LaTeX/text parsing
+│   ├── hierarchy.py             # Section grouping
+│   ├── math_cleanup.py          # LaTeX math normalization
+│   ├── region_fixer.py          # Interactive math fixing UI
 │   ├── criteria/                # Criteria registry
-│   └── ...
+│   │   └── base.py              # Paper types + evaluation criteria
+│   └── prompts/                 # Prompt templates
 │
 ├── prompts/                      # External prompt files (versioned)
 │   ├── multi_agent_debate/
+│   │   ├── config.yaml
+│   │   ├── personas/            # 10 personas (5 base + 6 exp_4)
+│   │   ├── debate_rounds/
+│   │   └── additional_context/
 │   └── section_evaluator/
+│       ├── config.yaml
+│       ├── paper_type_contexts/
+│       ├── section_type_guidance/
+│       └── master_prompts/
 │
 ├── tests/                        # All test files
 │   ├── __init__.py
@@ -113,10 +142,19 @@ app_system/
 │   ├── app_summarized_only.py   # Summarized-only demo
 │   └── app_demo*.py             # Other demos
 │
-├── docs/                         # Optional documentation
-│   ├── changelog.md             # Change history (update when appropriate)
+├── examples/                     # Example inputs
+│   └── sample_memo.txt
+│
+├── docs/                         # Technical documentation
+│   ├── changelog.md             # Change history
 │   ├── FRAMEWORK.md             # High-level system overview
-│   └── *.md                     # Technical notes (PDF processing, math cleanup, etc.)
+│   ├── quote_validation.md      # Quote validation system
+│   ├── deduplication.md         # Cross-reference deduplication
+│   ├── caching.md               # Caching system documentation
+│   ├── pymupdf_extraction.md    # PyMuPDF PDF extraction
+│   ├── math_cleanup.md          # LaTeX math normalization
+│   ├── MEMO_EVALUATION_README.md # Memo evaluation system
+│   └── *.md                     # Other technical notes
 │
 └── results/                      # Output directory
 ```
@@ -227,7 +265,11 @@ The entire working application lives in `app_system/`. The repo root contains on
 
 ```
 app.py
-├── Tab "Referee Report"   → referee.RefereeReportCheckerSummarized
+├── Tab "Referee Report"   → referee.RefereeWorkflow (5 personas)
+└── Tab "Section Evaluator" → section_eval.SectionEvaluatorApp
+
+app_exp_4.py
+├── Tab "Referee Report"   → referee.RefereeWorkflow (10 personas, uses engine_exp_4)
 └── Tab "Section Evaluator" → section_eval.SectionEvaluatorApp
 ```
 
@@ -284,10 +326,15 @@ The referee package contains the multi-agent debate (MAD) system for generating 
 ```
 referee/
 ├── workflow.py          # ⭐ Main production UI (RefereeWorkflow)
-├── engine.py            # ⭐ Debate orchestration (execute_debate_pipeline)
-├── _utils/              # 🔧 Internal helpers
+├── engine.py            # ⭐ 10-persona debate orchestration (execute_debate_pipeline)
+├── engine_exp_4.py      # 🗄️ Legacy 10-persona experimental version (deprecated)
+├── workflow_exp_4.py    # 🗄️ Legacy UI (deprecated)
+├── _utils/              # 🔧 Internal helpers (exported via __init__.py)
 │   ├── summarizer.py    # LLM summarization utilities
-│   └── quote_validator.py  # Quote verification (prevent hallucinations)
+│   ├── quote_validator.py  # Quote verification (prevent hallucinations)
+│   ├── cache.py         # Granular per-round SHA256-based caching
+│   ├── deduplicator.py  # Cross-reference deduplication (similarity-based)
+│   └── pdf_extractor_v2.py  # PyMuPDF-based PDF extraction with figures/tables
 └── _archived/           # 📦 Archived alternate implementations
     └── full_output_ui.py  # Full verbose UI (not main code path)
 ```
@@ -296,22 +343,44 @@ referee/
 
 - **`referee.workflow`** (`workflow.py`) — `RefereeWorkflow` is the main production UI class used in `app.py`. Uses LLM-powered summarization for clean display.
 
-- **`referee.engine`** (`engine.py`) — `execute_debate_pipeline(paper_text)` orchestrates 5 rounds:
-  - **Round 0**: LLM selects 3 of 5 personas (Theorist, Empiricist, Historian, Visionary, Policymaker) and assigns weights summing to 1.0.
-  - **Rounds 1, 2A, 2B, 2C**: `asyncio.gather()` runs all selected personas in parallel per round. Each persona receives only the context appropriate for its round (peer reports, Q&A transcript, full debate transcript).
+- **`referee.engine`** (`engine.py`) — `execute_debate_pipeline(paper_text)` orchestrates 5 rounds with 10 available personas:
+  - **Round 0**: LLM selects 3 of 10 personas (Theorist, Econometrician, ML_Expert, Data_Scientist, CS_Expert, Historian, Visionary, Policymaker, Ethicist, Perspective) and assigns weights summing to 1.0.
+  - **Rounds 1, 2A, 2B, 2C**: `asyncio.gather()` runs all 3 selected personas in parallel per round. Each persona receives only the context appropriate for its round (peer reports, Q&A transcript, full debate transcript).
   - **Round 3**: Editor computes weighted consensus (`PASS=1.0, REVISE=0.5, FAIL=0.0`; thresholds: >0.75 → ACCEPT, 0.40–0.75 → RESUBMIT, <0.40 → REJECT) and writes the final referee report.
 
-**Quote Validation** (`_utils/quote_validator.py`): Automatically validates quotes in persona reports to prevent hallucinations. Validates after Round 1 and Round 2C using fuzzy string matching (thefuzz library). Features:
-- Extracts quotes from reports (double/single quotes, blockquotes, statement patterns)
-- Uses adaptive thresholds: 95% for mathematical content, 85% for prose
-- Results shown in UI metadata section and Excel "Quote Validation" sheet
-- **Disable**: Set `DISABLE_QUOTE_VALIDATION=true` in environment or `.env`
-- **Dependencies**: `pip install thefuzz python-Levenshtein` (optional but recommended)
-- See `docs/quote_validation.md` for full documentation
+**Internal Utilities** (`_utils/`):
 
-**To add a new persona**: add to `SYSTEM_PROMPTS` in `referee/engine.py` (include the `_ERROR_SEVERITY_GUIDE` block), update the persona list in `SELECTION_PROMPT`, and add the icon/CSS class in `referee/workflow.py`.
+1. **Quote Validation** (`quote_validator.py`): Automatically validates quotes in persona reports to prevent hallucinations. Validates after Round 1 and Round 2C using fuzzy string matching (thefuzz library). Features:
+   - Extracts quotes from reports (double/single quotes, blockquotes, statement patterns)
+   - Uses adaptive thresholds: 95% for mathematical content, 85% for prose
+   - Results shown in UI metadata section and Excel "Quote Validation" sheet
+   - **Disable**: Set `DISABLE_QUOTE_VALIDATION=true` in environment or `.env`
+   - **Dependencies**: `pip install thefuzz python-Levenshtein` (optional but recommended)
+   - See `docs/quote_validation.md` for full documentation
 
-**Import paths**: Use `from referee import RefereeWorkflow, execute_debate_pipeline` to access the main classes and functions. The underscore-prefixed subdirectories (`_utils/`, `_archived/`) contain internal/archived code not part of the main API.
+2. **Caching** (`cache.py`): SHA256-based granular caching system with per-round granularity. Cache keys computed from paper text, selected personas, weights, and model config. Can save 50-80% of costs during iterative development.
+   - Cache directory: `.referee_cache/`
+   - Structure: `{cache_key}/round_{0,1,2a,2b,2c,3}_{name}.json`
+   - **Enable**: Checkbox in UI, or set `CACHE_ENABLED=true` in `.env`
+   - See `docs/caching.md` for full documentation
+
+3. **Deduplication** (`deduplicator.py`): Identifies and merges duplicate findings across persona reports using quote overlap, semantic similarity (optional embeddings), and keyword matching.
+   - **Enable**: Set `ENABLE_DEDUPLICATION=true` in `.env` (default: true)
+   - **Configure**: `DEDUP_SIMILARITY_THRESHOLD` (default: 0.8)
+   - **Embeddings**: Requires `pip install sentence-transformers` for semantic similarity
+   - See `docs/deduplication.md` for full documentation
+
+4. **PDF Extraction** (`pdf_extractor_v2.py`): PyMuPDF-based extraction supporting multi-column layouts, figure/table extraction, OCR, and caption parsing. Falls back to pdfplumber if PyMuPDF unavailable.
+   - **Dependencies**: `pip install pymupdf Pillow pytesseract` (OCR optional)
+   - See `docs/pymupdf_extraction.md` for full documentation
+
+**10-Persona System Evolution**: The system originally used 5 personas (Theorist, Empiricist, Historian, Visionary, Policymaker) but was expanded to 10 personas to provide better coverage of technical depth (added Econometrician, ML_Expert, Data_Scientist, CS_Expert) and ethical dimensions (added Ethicist, Perspective). The 10-persona system is now the primary production system in `engine.py` and `app.py`. Legacy files (`app_exp_4.py`, `engine_exp_4.py`, `workflow_exp_4.py`) are deprecated. See `EXPERIMENT_4_SUMMARY.md` and `README_EXP_4.md` for historical context.
+
+**Memo Evaluation System**: A parallel system for evaluating policy memos instead of research papers. Uses the same MAD architecture but with memo-specific analyst personas (Policy Analyst, Data Analyst, Stakeholder Analyst, Implementation Analyst, Financial Stability Analyst). Files: `app-memo.py`, `memo_engine.py`, `memo_prompts.py`. See `docs/MEMO_EVALUATION_README.md` and `docs/MEMO_SYSTEM_QUICKSTART.md` for details.
+
+**To add an 11th persona**: (1) add to `load_persona_prompt()` persona_dir_map and `FALLBACK_SYSTEM_PROMPTS` in `referee/engine.py`, (2) add to numbered list in `SELECTION_PROMPT` with clear expertise description, (3) add icon/CSS class in `referee/workflow.py`, (4) create prompt file in `prompts/multi_agent_debate/personas/{name}/v1.0.txt` with `{error_severity}` placeholder.
+
+**Import paths**: Use `from referee import RefereeWorkflow, execute_debate_pipeline` to access the main classes and functions. The underscore-prefixed subdirectories (`_utils/`, `_archived/`) contain internal/archived code not part of the main API. Utilities are exported via `referee._utils.__init__.py`.
 
 ## Changelog
 

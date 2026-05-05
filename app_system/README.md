@@ -5,11 +5,12 @@ This directory contains all files needed to run the Streamlit evaluation apps.
 ## Key Features
 
 ### Referee Report System
-- **Dual output modes**: Choose between full output (14 calls) or with LLM summarization (+10-15 calls)
+- **10 specialized personas**: Automatic selection of 3 most relevant reviewers from pool of 10 (Theorist, Econometrician, ML_Expert, Data_Scientist, CS_Expert, Historian, Visionary, Policymaker, Ethicist, Perspective)
+- **5-round debate**: Independent analysis → cross-examination → responses → amendments → editor synthesis
+- **Weighted consensus**: Mathematical aggregation of persona verdicts with configurable weights
 - **Automatic cost tracking**: Real-time token usage and cost estimation
 - **Enhanced PDF extraction**: Automatic table extraction formatted as markdown
-- **Configurable personas**: 5 specialized AI reviewers (3 selected per paper)
-- **Weighted consensus**: Mathematical aggregation of persona verdicts
+- **Quote validation**: Prevents hallucinated evidence with fuzzy matching verification
 
 ### Section Evaluator
 - **Auto-detection**: Two-pass section detection (heuristic + LLM)

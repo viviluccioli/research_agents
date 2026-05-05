@@ -1,8 +1,10 @@
 # Experiment 4 Implementation Summary
 
+> **⚠️ NOTE (May 2026)**: The 10-persona system is now the **primary production system** in `app.py` and `engine.py`. The files originally created for this experiment (`app_exp_4.py`, `engine_exp_4.py`, `workflow_exp_4.py`) are now deprecated. This document is preserved for historical context on the evolution from 5 to 10 personas.
+
 ## Overview
 
-Successfully created a new version of the referee report system (`app_exp_4.py`) based on the experimental framework from `mad_experiments/exp_4/MADExpCurrent.ipynb`. This version expands the multi-agent debate system from **5 personas** to **10 personas** (still selecting 3).
+Successfully created a new version of the referee report system (`app_exp_4.py`) based on the experimental framework from `mad_experiments/exp_4/MADExpCurrent.ipynb`. This version expands the multi-agent debate system from **5 personas** to **10 personas** (still selecting 3). **This system has now been integrated into the main `app.py` and `engine.py`.**
 
 ## Files Created
 
