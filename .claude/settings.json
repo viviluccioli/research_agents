@@ -6,9 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | xargs -I{} bash -c 'if [[ \"{}\" == *.py ]]; then cd /casl/home/m1vcl00/FS-CASL/research_agents && python3 -m pytest app_system/tests/; fi'",
-            "statusMessage": "Running tests...",
-            "async": true
+            "command": "bash .claude/hooks/run-tests-on-edit.sh",
+            "statusMessage": "Running tests on modified file...",
+            "async": false
           }
         ]
       },

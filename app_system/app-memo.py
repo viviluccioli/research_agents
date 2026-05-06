@@ -18,7 +18,7 @@ from io import BytesIO
 import pdfplumber
 
 from utils import cm
-from referee.memo_engine import execute_debate_pipeline, MEMO_SYSTEM_PROMPTS
+from referee.memo.memo_engine import execute_debate_pipeline, MEMO_SYSTEM_PROMPTS
 from referee._utils.summarizer import summarize_all_rounds
 
 # Import helper functions from archived full output UI (domain-agnostic)

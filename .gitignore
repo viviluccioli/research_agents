@@ -1,6 +1,7 @@
 # Specific to this repo
 
 claude_extra_docs/
+commit_history/
 papers/*.txt
 app_system/tests/example_math_cleanup_integration.py
 app_system/.referee_cache/

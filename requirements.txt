@@ -14,3 +14,4 @@ filelock  # For thread-safe cache file locking
 thefuzz  # For fuzzy string matching (quote validation)
 python-Levenshtein  # Optional: speeds up thefuzz (recommended)
 sentence-transformers  # Optional: for semantic similarity in deduplication (requires ~500MB model download)
+pytest>=7.0.0  # For running tests

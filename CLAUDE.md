@@ -76,6 +76,69 @@ Configuration is loaded by `app_system/config.py` which uses `python-dotenv`. Th
 
 **Never commit `.env` to git** - it's in `.gitignore`.
 
+## Claude Code Hooks & Commit History
+
+This repository uses Claude Code automation hooks to maintain code quality and documentation.
+
+### Automated Hooks
+
+Two hooks are configured in `.claude/settings.json`:
+
+1. **Test Runner** (`.claude/hooks/run-tests-on-edit.sh`)
+   - **Trigger**: Runs automatically when Python files in `app_system/` are edited via Write or Edit tools
+   - **Action**: Executes pytest on related test files
+   - **Behavior**: Non-blocking (shows output but doesn't halt Claude)
+   - **Skips**: Test files themselves, files outside `app_system/`
+
+2. **Commit Documentation Generator** (`.claude/hooks/gen-commit-docs.sh`)
+   - **Trigger**: Runs automatically after any `git commit` command
+   - **Action**: Generates a markdown file documenting the commit
+   - **Output Location**: `commit_history/{short_hash}_{sanitized_title}.md`
+   - **Content**: Commit hash, date, author, changes summary, and full diff
+
+### Commit History Archive
+
+**IMPORTANT FOR HANDOFF**: All git commits are automatically documented in the `commit_history/` directory.
+
+**Format**: Each file follows the pattern `{7-char-hash}_{commit-title}.md`
+
+**Contents**:
+- Commit metadata (hash, date, author)
+- Changes summary (`git show --stat`)
+- Full diff (`git show`)
+
+**Example**: `commit_history/de77b56_added_git_commit_hook.md`
+
+**Use Cases**:
+- Review what changed in a specific commit without running `git show`
+- Understand context behind major changes during handoff
+- Quick reference for Claude Code when understanding repository history
+- Searchable archive of all development decisions
+
+**Note**: The `commit_history/` directory is tracked in git, so all commit documentation is version-controlled and travels with the repository.
+
+### Hook Configuration
+
+To view or modify hook behavior, edit `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{"command": "bash .claude/hooks/run-tests-on-edit.sh"}]
+      },
+      {
+        "matcher": "Bash",
+        "filter": "git commit",
+        "hooks": [{"command": "bash .claude/hooks/gen-commit-docs.sh"}]
+      }
+    ]
+  }
+}
+```
+
 ## File Organization Rules
 
 The `app_system/` directory follows standard Python package organization:

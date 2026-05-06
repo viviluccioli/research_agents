@@ -194,8 +194,64 @@ research_agents/
 ├── papers/                            # Sample papers for testing
 ├── requirements.txt                   # Python dependencies
 ├── README.md                          # This file
-└── CLAUDE.md                          # Guidance for Claude Code
+├── CLAUDE.md                          # Guidance for Claude Code
+│
+├── .claude/                           # Claude Code configuration & hooks
+│   ├── settings.json                 # Hook configuration
+│   ├── hooks/                        # Automation scripts
+│   │   ├── gen-commit-docs.sh       # Auto-generates commit documentation
+│   │   └── run-tests-on-edit.sh     # Auto-runs tests on file edits
+│   ├── rules/                        # Context-specific guidance for Claude
+│   ├── memory/                       # Claude Code persistent memory
+│   └── skills/                       # Custom Claude Code skills
+│
+└── commit_history/                    # 📝 Auto-generated commit documentation
+    └── {hash}_{title}.md             # One markdown file per git commit
 ```
+
+---
+
+## Claude Code Hooks & Commit History
+
+**IMPORTANT FOR HANDOFF**: This repository uses automated hooks that run during development with Claude Code.
+
+### Automated Documentation
+
+Every git commit automatically generates a documentation file in `commit_history/`:
+
+**File Format**: `{7-char-hash}_{sanitized-commit-title}.md`
+
+**Contents**:
+- Commit metadata (hash, date, author)
+- Changes summary (files modified, insertions, deletions)
+- Full diff of all changes
+
+**Example**: After running `git commit -m "added git commit hook"`, the system automatically creates:
+```
+commit_history/de77b56_added_git_commit_hook.md
+```
+
+**Why This Matters**: When you take over this repository, you can quickly review what changed in any commit by reading these markdown files instead of running `git show`. This is especially useful for understanding major architectural decisions or debugging issues.
+
+### Automated Testing
+
+When editing Python files in `app_system/`, Claude Code automatically runs relevant pytest tests to catch regressions immediately.
+
+**How It Works**:
+- Hook: `.claude/hooks/run-tests-on-edit.sh`
+- Trigger: Any Write or Edit operation on `*.py` files in `app_system/`
+- Action: Runs related test file (e.g., editing `engine.py` runs `test_engine.py`)
+- Falls back to smoke tests if no specific test exists
+
+### Hook Configuration
+
+All hooks are configured in `.claude/settings.json`. To modify hook behavior:
+
+```bash
+nano .claude/settings.json
+```
+
+See `CLAUDE.md` for detailed hook documentation.
 
 ---
 

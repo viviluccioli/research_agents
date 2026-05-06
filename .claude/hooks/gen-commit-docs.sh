@@ -2,32 +2,47 @@
 # .claude/hooks/gen-commit-docs.sh
 # Hook to generate documentation on commit
 
-# Parse stdin to see if the command was a git commit
-INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.command // empty')
+# Change to repo root
+cd /casl/home/m1vcl00/FS-CASL/research_agents || exit 1
 
-# Only act if it's a git commit
-if [[ "$COMMAND" == *"git commit"* ]]; then
-  
-  # Ensure the directory exists
-  mkdir -p "commit history"
-  
-  # Get last commit title (assuming commit already happened or staging)
-  COMMIT_TITLE=$(git log -1 --pretty=%s)
-  
-  # Sanitize title for filename
-  FILENAME="commit history/${COMMIT_TITLE// /-}.md"
-  
-  # Tell Claude to analyze changes and write them to the file
-  # Note: This requires Claude Code's internal API to generate content
-  git diff HEAD > /tmp/current_diff
-  
-  echo "Generating documentation for: $COMMIT_TITLE"
-  
-  # --- Logic to call Claude to write the documentation goes here ---
-  # Alternatively, use this hook to simply stage the diff for another process
-  git diff HEAD > "$FILENAME"
-fi
+# Ensure the directory exists
+mkdir -p "commit_history"
 
-# Exit 0 to allow the commit to proceed
+# Get last commit info
+COMMIT_HASH=$(git log -1 --pretty=%H)
+COMMIT_TITLE=$(git log -1 --pretty=%s)
+COMMIT_DATE=$(git log -1 --pretty=%ci)
+COMMIT_AUTHOR=$(git log -1 --pretty=%an)
+
+# Sanitize title for filename (remove special chars, limit length)
+SAFE_TITLE=$(echo "$COMMIT_TITLE" | tr '/' '-' | tr ' ' '_' | cut -c1-50)
+FILENAME="commit_history/${COMMIT_HASH:0:7}_${SAFE_TITLE}.md"
+
+# Get the actual committed changes (diff against parent)
+CHANGES=$(git show --stat "$COMMIT_HASH")
+DIFF=$(git show "$COMMIT_HASH")
+
+# Generate documentation
+cat > "$FILENAME" <<EOF
+# Commit: $COMMIT_TITLE
+
+**Hash**: \`$COMMIT_HASH\`
+**Date**: $COMMIT_DATE
+**Author**: $COMMIT_AUTHOR
+
+## Changes Summary
+
+\`\`\`
+$CHANGES
+\`\`\`
+
+## Full Diff
+
+\`\`\`diff
+$DIFF
+\`\`\`
+EOF
+
+echo "✅ Generated commit documentation: $FILENAME"
+
 exit 0

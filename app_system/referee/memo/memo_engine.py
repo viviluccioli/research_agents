@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 from pathlib import Path
 
 from utils import single_query, count_tokens
-from referee.memo_prompts import (
+from .memo_prompts import (
     MEMO_SYSTEM_PROMPTS,
     MEMO_SELECTION_PROMPT,
     MEMO_TYPE_CONTEXTS,
