@@ -338,9 +338,10 @@ app_exp_4.py
 
 ### LLM infrastructure (`app_system/utils.py`)
 
-All LLM calls go through a single internal API (Federal Reserve MartinAI, OpenAI-compatible). Two call patterns exist:
+All LLM calls go through a single internal API (Federal Reserve MartinAI, OpenAI-compatible). Three call patterns exist:
 
-- **`single_query(prompt)`** — stateless, used by the MAD system. Retries 3× with 5s delay.
+- **`single_query(prompt)`** — stateless, includes generic "research assistant" system prompt. Used by non-referee workflows. Retries 3× with 5s delay.
+- **`referee_query(prompt)`** — stateless, NO generic system prompt. Used exclusively by referee system to avoid diluting specialized persona instructions. Accepts optional temperature parameter. Retries 3× with 5s delay.
 - **`ConversationManager.conv_query(prompt)`** — stateful, used by section eval. Automatically prunes/summarizes old messages when tokens exceed 8000.
 
 **Model configuration**: ALL systems now use **Claude 4.5 Sonnet**. The legacy model aliases (`model_selection`, `model_selection3`) both point to `MODEL_PRIMARY` which is Claude 4.5.
@@ -411,6 +412,30 @@ referee/
   - **Rounds 1, 2A, 2B, 2C**: `asyncio.gather()` runs all 3 selected personas in parallel per round. Each persona receives only the context appropriate for its round (peer reports, Q&A transcript, full debate transcript).
   - **Round 3**: Editor computes weighted consensus (`PASS=1.0, REVISE=0.5, FAIL=0.0`; thresholds: >0.75 → ACCEPT, 0.40–0.75 → RESUBMIT, <0.40 → REJECT) and writes the final referee report.
 
+**Per-Round Temperature Control** (since 2026-05-06):
+
+The referee system uses differentiated temperatures for each round to balance consistency with thoughtfulness:
+
+```python
+ROUND_TEMPERATURES = {
+    'round_0': 0.4,   # Persona selection - needs consistency (same personas for similar papers)
+    'round_1': 0.7,   # Independent analysis - needs thoughtful, creative evaluation
+    'round_2a': 0.7,  # Cross-examination - needs insightful questions and synthesis
+    'round_2b': 0.6,  # Direct answers - focused responses to specific questions
+    'round_2c': 0.6,  # Final amendments - refined evaluation after debate
+    'round_3': 0.4,   # Editor synthesis - faithful consensus calculation, no new ideas
+}
+```
+
+**Rationale**: Different rounds require different creativity/consistency balance:
+- **Low temp (0.4)**: Selection & synthesis need consistency to avoid random variation
+- **Medium temp (0.6)**: Focused responses while maintaining quality reasoning
+- **High temp (0.7)**: Analysis & debate benefit from creative, thoughtful evaluation
+
+**Implementation**: All LLM calls use `referee_query()` (no generic system prompt) with round-specific temperatures. Metadata tracks the temperature system and per-round values for reproducibility. Expected improvement: 60-80% reduction in verdict variability while maintaining analysis quality.
+
+**To modify**: Edit `ROUND_TEMPERATURES` dict in `referee/engine.py`. Use `get_round_temperature(round_id)` to retrieve values.
+
 **Internal Utilities** (`_utils/`):
 
 1. **Quote Validation** (`quote_validator.py`): Automatically validates quotes in persona reports to prevent hallucinations. Validates after Round 1 and Round 2C using fuzzy string matching (thefuzz library). Features:
@@ -449,10 +474,20 @@ referee/
 
 For significant changes to `app_system/section_eval/` or `app_system/referee/`, consider updating `app_system/docs/changelog.md`. Only document major features, fixes, or breaking changes — not minor tweaks or refactors.
 
+**Recent Major Changes**:
+- **2026-05-06**: Per-round temperature control added to referee system (Phase 2 consistency improvements)
+- **2026-05-05**: Removed generic system prompt pollution from referee calls (Phase 1 consistency improvements)
+- See `CHANGES_2026-05-05.md` and `CHANGES_2026-05-06.md` for detailed documentation
+- See `running-ideas.md` for full problem analysis and future improvement phases
+
 ## Key gotchas
 
 - **Import paths**: All packages (`section_eval/`, `referee/`) import from the parent `utils.py` via `from utils import ...`. This only works when Streamlit is launched from `app_system/`. Running from the repo root will break imports. Demo apps in `demos/` add the parent directory to sys.path.
-- **`safe_query` vs `single_query`**: Both use **Claude 4.5 Sonnet**. `safe_query` (in `section_eval/utils.py`) bypasses `ConversationManager` and calls the API directly at temperature 0.3. `single_query` (in `utils.py`) has thinking budget enabled and uses temperature 1.
-- **Thinking mode**: `single_query` sends `"thinking": {"type": "enabled", "budget_tokens": 2048}` — temperature must be 1 when this is enabled. `safe_query` does not use thinking mode (temperature 0.3).
+- **Query functions**: All use **Claude 4.5 Sonnet** but with different configurations:
+  - `safe_query` (section eval): Temperature 0.3, no thinking mode, bypasses ConversationManager
+  - `single_query` (generic): Temperature 0.7, includes generic system prompt, no thinking mode
+  - `referee_query` (referee system): Temperature varies by round (0.4-0.7), NO generic system prompt, no thinking mode
+- **Thinking mode**: Currently NOT enabled in any system. Was documented as enabled but the API parameter was never sent. Thinking mode requires temperature=1.0, which conflicts with per-round temperature control in the referee system.
+- **Referee temperatures**: Per-round temperature control means referee calls use different temps (0.4 for selection/synthesis, 0.6-0.7 for analysis). See `ROUND_TEMPERATURES` in `referee/engine.py`.
 - **Cache prefix**: `SectionEvaluator` uses prefix `"se_cache_v3"`, `SectionEvaluatorApp` uses `"se_v3"`. If you change the result schema, bump these prefixes to avoid stale cache hits.
 - **`fpdf` encoding**: PDF generation encodes text as `latin-1` with `replace` error handling. Unicode characters in paper text will be silently substituted.

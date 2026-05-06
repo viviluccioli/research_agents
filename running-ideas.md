@@ -22,7 +22,7 @@ The referee report system (app_system/app.py) gives inconsistent results when ru
 
 ### Proposed Next Steps
 
-#### 🌡️ **Phase 2: Per-Round Temperature Control** (READY TO IMPLEMENT)
+#### 🌡️ **Phase 2: Per-Round Temperature Control** ✅ IMPLEMENTED (2026-05-06)
 
 **Rationale**: Different rounds need different creativity/consistency balance:
 - Selection & synthesis need consistency → low temp
@@ -40,14 +40,23 @@ ROUND_TEMPERATURES = {
 }
 ```
 
-**Implementation plan**:
-1. Add `ROUND_TEMPERATURES` dict to `referee/engine.py`
-2. Modify `call_llm_async()` to accept optional `round_id` parameter
-3. Pass round-specific temperature to `referee_query()`
-4. Update 5 round functions to pass `round_id`
-5. Document in CLAUDE.md under "Model Configuration"
+**Implementation completed** (2026-05-06):
+1. ✅ Added `ROUND_TEMPERATURES` dict to `referee/engine.py` (lines 268-287)
+2. ✅ Modified `call_llm_async()` to accept `round_id` parameter (line 297)
+3. ✅ Pass round-specific temperature to `referee_query()` (line 321)
+4. ✅ Updated 6 round functions to use round-specific temps:
+   - `run_round_0_selection()`: lines 387, 442 (temp 0.4)
+   - `run_round_1()`: line 540 (temp 0.7)
+   - `run_round_2a()`: line 569 (temp 0.7)
+   - `run_round_2b()`: line 599 (temp 0.6)
+   - `run_round_2c()`: line 632 (temp 0.6)
+   - `run_round_3()`: line 804 (temp 0.4)
+5. ✅ Updated metadata to track temperature system (lines 1069-1075)
+6. ⏳ Documentation in CLAUDE.md (TODO)
 
 **Expected improvement**: 60-80% reduction in verdict variability while maintaining analysis quality
+
+**Testing needed**: Run 5× on 3 test papers to measure consistency gains. See detailed protocol in CHANGES_2026-05-06.md.
 
 #### 🧠 **Phase 3: Enable Thinking Mode** (OPTIONAL)
 
@@ -126,8 +135,12 @@ REFEREE_EXPERIMENT_NOTES=Removed generic system prompt pollution
 Track in Excel output metadata alongside model version, timestamp, etc.
 
 ### References
-- Main conversation: 2026-05-05 (this session)
-- Files modified: `app_system/utils.py`, `app_system/referee/engine.py`, `app_system/referee/_utils/summarizer.py`
+- **Phase 1** (2026-05-05): Removed generic system prompt
+  - Files: `app_system/utils.py`, `app_system/referee/engine.py`, `app_system/referee/_utils/summarizer.py`
+  - Details: `CHANGES_2026-05-05.md`
+- **Phase 2** (2026-05-06): Per-round temperature control
+  - Files: `app_system/referee/engine.py`
+  - Details: `CHANGES_2026-05-06.md`
 - Documentation: See CLAUDE.md sections on "Model Configuration" and "Referee System Context"
 
 ---

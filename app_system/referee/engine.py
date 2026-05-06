@@ -263,6 +263,30 @@ def should_enable_quote_validation() -> bool:
     return os.environ.get('DISABLE_QUOTE_VALIDATION', '').lower() != 'true'
 
 # ==========================================
+# TEMPERATURE CONFIGURATION
+# ==========================================
+ROUND_TEMPERATURES = {
+    'round_0': 0.4,   # Persona selection - needs consistency (same personas for similar papers)
+    'round_1': 0.7,   # Independent analysis - needs thoughtful, creative evaluation
+    'round_2a': 0.7,  # Cross-examination - needs insightful questions and synthesis
+    'round_2b': 0.6,  # Direct answers - focused responses to specific questions
+    'round_2c': 0.6,  # Final amendments - refined evaluation after debate
+    'round_3': 0.4,   # Editor synthesis - faithful consensus calculation, no new ideas
+}
+
+def get_round_temperature(round_id: str) -> float:
+    """
+    Get the appropriate temperature for a given round.
+
+    Args:
+        round_id: Round identifier (e.g., 'round_0', 'round_1', 'round_2a')
+
+    Returns:
+        Temperature value (0.0-1.0)
+    """
+    return ROUND_TEMPERATURES.get(round_id, 0.7)  # Default to 0.7 if not specified
+
+# ==========================================
 # ORCHESTRATION FUNCTIONS
 # ==========================================
 async def call_llm_async(
@@ -270,10 +294,11 @@ async def call_llm_async(
     user_prompt: str,
     role: str,
     paper_text: str,
-    custom_context: Optional[str] = None
+    custom_context: Optional[str] = None,
+    round_id: str = 'round_1'
 ) -> str:
     """
-    Async wrapper for LLM calls.
+    Async wrapper for LLM calls with round-specific temperature.
 
     Args:
         system_prompt: The role-specific system prompt
@@ -281,6 +306,7 @@ async def call_llm_async(
         role: The persona name
         paper_text: The paper text
         custom_context: Optional user-provided evaluation priorities
+        round_id: Round identifier for temperature selection (e.g., 'round_1', 'round_2a')
 
     Returns:
         LLM response string
@@ -295,9 +321,12 @@ async def call_llm_async(
 
     full_prompt += f"\n\nPAPER TEXT:\n{paper_text}"
 
+    # Get round-specific temperature
+    temperature = get_round_temperature(round_id)
+
     # Call the LLM (running in thread to avoid blocking)
     combined_prompt = f"{system_prompt}\n\n{full_prompt}"
-    return await asyncio.to_thread(referee_query, combined_prompt)
+    return await asyncio.to_thread(referee_query, combined_prompt, temperature=temperature)
 
 async def run_round_0_selection(
     paper_text: str,
@@ -353,7 +382,9 @@ async def run_round_0_selection(
             weight_prompt += f"\nPAPER TEXT:\n{paper_text}\n\n"
             weight_prompt += f"OUTPUT FORMAT: Return ONLY valid JSON with these personas {manual_personas} and their weights."
 
-            response = await asyncio.to_thread(referee_query, weight_prompt)
+            # Use round_0 temperature for consistency
+            temperature = get_round_temperature('round_0')
+            response = await asyncio.to_thread(referee_query, weight_prompt, temperature=temperature)
 
             try:
                 json_match = re.search(r"\{.*\}", response, re.DOTALL)
@@ -406,7 +437,10 @@ async def run_round_0_selection(
         selection_prompt += f"USER EVALUATION PRIORITIES:\n{custom_context}\n\n"
 
     selection_prompt += f"PAPER TEXT:\n{paper_text}"
-    response = await asyncio.to_thread(referee_query, selection_prompt)
+
+    # Use round_0 temperature for consistency in persona selection
+    temperature = get_round_temperature('round_0')
+    response = await asyncio.to_thread(referee_query, selection_prompt, temperature=temperature)
 
     try:
         # Extract JSON from response
@@ -503,7 +537,7 @@ Example:
 
     tasks = {}
     for role in active_personas:
-        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], user_prompt, role, paper_text, custom_context)
+        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], user_prompt, role, paper_text, custom_context, round_id='round_1')
 
     # Use return_exceptions=True to get partial results even if some personas fail
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -532,7 +566,7 @@ async def run_round_2a(r1_reports: Dict[str, str], active_personas: list, paper_
             role=role,
             peer_reports=peer_reports_text
         )
-        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2a, role, paper_text, custom_context)
+        tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2a, role, paper_text, custom_context, round_id='round_2a')
 
     # Use return_exceptions=True to get partial results even if some personas fail
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -562,7 +596,7 @@ async def run_round_2b(r2a_reports: Dict[str, str], active_personas: list, paper
                 role=role,
                 r2a_transcript=r2a_transcript
             )
-            tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2b, role, paper_text, custom_context)
+            tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2b, role, paper_text, custom_context, round_id='round_2b')
 
     # Use return_exceptions=True to get partial results even if some personas fail
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -595,7 +629,7 @@ async def run_round_2c(r1_reports: Dict[str, str], r2a_reports: Dict[str, str],
                 role=role,
                 debate_transcript=transcript
             )
-            tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2c, role, paper_text, custom_context)
+            tasks[role] = call_llm_async(SYSTEM_PROMPTS[role], prompt_2c, role, paper_text, custom_context, round_id='round_2c')
 
     # Use return_exceptions=True to get partial results even if some personas fail
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -765,7 +799,9 @@ async def run_round_3(r2c_reports: Dict[str, str], selection_data: dict) -> str:
     )
 
     system_prompt = "You are the Senior Editor. Follow the mathematical weighting instructions strictly."
-    result = await asyncio.to_thread(referee_query, f"{system_prompt}\n\n{prompt_3}")
+    # Use round_3 temperature for faithful synthesis
+    temperature = get_round_temperature('round_3')
+    result = await asyncio.to_thread(referee_query, f"{system_prompt}\n\n{prompt_3}", temperature=temperature)
     print("[Round 3] Editor decision completed")
     return result
 
@@ -1030,9 +1066,10 @@ async def execute_debate_pipeline(
             'model': MODEL_PRIMARY,
             'model_version': MODEL_PRIMARY,  # Alias for Excel export
             'api_base': API_BASE,
-            'temperature': 0.7,  # From referee_query in utils.py (default)
-            'thinking_enabled': True,
-            'thinking_budget_tokens': 2048,
+            'temperature_system': 'per_round',  # Per-round temperature control enabled
+            'round_temperatures': ROUND_TEMPERATURES.copy(),  # Temperature by round
+            'thinking_enabled': False,  # Not currently implemented (requires temp=1.0)
+            'thinking_budget_tokens': 0,  # Not enabled
             'max_retries': 3,
             'retry_delay_seconds': 5,
             'prompt_versions': prompt_versions
