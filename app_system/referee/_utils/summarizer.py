@@ -8,7 +8,7 @@ Each round's output is condensed to key points while preserving full details.
 import asyncio
 import re
 from typing import Dict, List
-from utils import single_query
+from utils import referee_query
 
 
 def summarize_round_1_report(persona: str, full_report: str) -> Dict[str, str]:
@@ -39,7 +39,7 @@ OUTPUT FORMAT:
 Be CONCISE. Each bullet should be 1 sentence max. Focus on actionable findings only.
 """
 
-    summary = single_query(prompt, max_tokens=1024)
+    summary = referee_query(prompt, max_tokens=1024)
 
     # Extract verdict from "Verdict:" line specifically
     verdict = "UNKNOWN"
@@ -94,7 +94,7 @@ OUTPUT FORMAT:
 Be EXTREMELY CONCISE. Focus only on what matters for understanding the debate flow.
 """
 
-    return single_query(prompt, max_tokens=512)
+    return referee_query(prompt, max_tokens=512)
 
 
 def summarize_round_2b_report(persona: str, full_report: str) -> str:
@@ -121,7 +121,7 @@ OUTPUT FORMAT:
 Be EXTREMELY CONCISE.
 """
 
-    return single_query(prompt, max_tokens=512)
+    return referee_query(prompt, max_tokens=512)
 
 
 def summarize_round_2c_report(persona: str, full_report: str) -> Dict[str, str]:
@@ -150,7 +150,7 @@ OUTPUT FORMAT:
 Be EXTREMELY CONCISE.
 """
 
-    summary = single_query(prompt, max_tokens=768)
+    summary = referee_query(prompt, max_tokens=768)
 
     # Extract verdict from "Final Verdict:" line specifically (not from "Verdict Change:" line)
     verdict = "UNKNOWN"
@@ -217,7 +217,7 @@ OUTPUT FORMAT:
 Focus on ACTIONABLE items. Be EXTREMELY CONCISE.
 """
 
-    return single_query(prompt, max_tokens=1536)
+    return referee_query(prompt, max_tokens=1536)
 
 
 async def summarize_all_rounds(results: Dict) -> Dict[str, any]:

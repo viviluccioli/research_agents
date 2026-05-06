@@ -23,7 +23,7 @@ from typing import Dict, List, Optional
 from pathlib import Path
 import yaml
 import streamlit as st
-from utils import single_query, count_tokens
+from utils import single_query, referee_query, count_tokens
 from config import (
     MODEL_PRIMARY,
     model_selection,
@@ -297,7 +297,7 @@ async def call_llm_async(
 
     # Call the LLM (running in thread to avoid blocking)
     combined_prompt = f"{system_prompt}\n\n{full_prompt}"
-    return await asyncio.to_thread(single_query, combined_prompt)
+    return await asyncio.to_thread(referee_query, combined_prompt)
 
 async def run_round_0_selection(
     paper_text: str,
@@ -353,7 +353,7 @@ async def run_round_0_selection(
             weight_prompt += f"\nPAPER TEXT:\n{paper_text}\n\n"
             weight_prompt += f"OUTPUT FORMAT: Return ONLY valid JSON with these personas {manual_personas} and their weights."
 
-            response = await asyncio.to_thread(single_query, weight_prompt)
+            response = await asyncio.to_thread(referee_query, weight_prompt)
 
             try:
                 json_match = re.search(r"\{.*\}", response, re.DOTALL)
@@ -406,7 +406,7 @@ async def run_round_0_selection(
         selection_prompt += f"USER EVALUATION PRIORITIES:\n{custom_context}\n\n"
 
     selection_prompt += f"PAPER TEXT:\n{paper_text}"
-    response = await asyncio.to_thread(single_query, selection_prompt)
+    response = await asyncio.to_thread(referee_query, selection_prompt)
 
     try:
         # Extract JSON from response
@@ -765,7 +765,7 @@ async def run_round_3(r2c_reports: Dict[str, str], selection_data: dict) -> str:
     )
 
     system_prompt = "You are the Senior Editor. Follow the mathematical weighting instructions strictly."
-    result = await asyncio.to_thread(single_query, f"{system_prompt}\n\n{prompt_3}")
+    result = await asyncio.to_thread(referee_query, f"{system_prompt}\n\n{prompt_3}")
     print("[Round 3] Editor decision completed")
     return result
 
@@ -1030,7 +1030,7 @@ async def execute_debate_pipeline(
             'model': MODEL_PRIMARY,
             'model_version': MODEL_PRIMARY,  # Alias for Excel export
             'api_base': API_BASE,
-            'temperature': 1.0,  # From single_query in utils.py
+            'temperature': 0.7,  # From referee_query in utils.py (default)
             'thinking_enabled': True,
             'thinking_budget_tokens': 2048,
             'max_retries': 3,

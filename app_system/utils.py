@@ -87,6 +87,67 @@ def single_query(prompt: str, debug_flag=False, retries=3, max_tokens=4096, mode
 
     return "API error"
 
+def referee_query(prompt: str, debug_flag=False, retries=3, max_tokens=4096, model=None, temperature=None) -> str:
+    """
+    Query the LLM for referee system - NO generic system prompt.
+
+    This function is identical to single_query() except it does NOT include
+    the hardcoded "research assistant" system prompt. The referee system
+    already injects its own specialized persona system prompts, and the
+    generic prompt dilutes persona adherence.
+
+    Args:
+        prompt: The full prompt (including system instructions from persona)
+        debug_flag: Print debug info
+        retries: Number of retry attempts
+        max_tokens: Maximum tokens in response (default 4096)
+        model: Optional model override (defaults to MODEL_PRIMARY)
+        temperature: Optional temperature override (defaults to 0.7)
+
+    Returns:
+        LLM response string
+    """
+    url = url_chat_completions
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    # Use provided model or default to MODEL_PRIMARY
+    selected_model = model if model is not None else MODEL_PRIMARY
+    # Use provided temperature or default to 0.7
+    selected_temperature = temperature if temperature is not None else 0.7
+
+    data = {
+        "model": selected_model,
+        "messages": [
+            {"role": "user", "content": prompt}  # NO system prompt here
+        ],
+        "temperature": selected_temperature,
+        "max_tokens": max_tokens
+    }
+
+    for attempt in range(retries):
+        try:
+            response = requests.post(url, headers=headers, json=data)
+
+            if response.status_code == 200:
+                if debug_flag:
+                    print("Success!")
+
+                output_text = response.json()
+                return output_text["choices"][0]["message"]["content"]
+            else:
+                print(f"API Error {response.status_code}: {response.text}")
+        except requests.RequestException as e:
+            print(f"API request failed: {e}")
+
+        if attempt < retries - 1:
+            print("Retrying in 5 seconds...")
+            time.sleep(5)
+
+    return "API error"
+
 try:
     ENC = tiktoken.get_encoding("cl100k_base")
     def count_tokens(text: str) -> int:
