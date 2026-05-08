@@ -1,0 +1,35 @@
+# PHP Referee App - Gitignore
+
+# Uploaded files (temporary storage)
+uploads/
+uploads/*
+
+# Cache files
+cache/
+cache/*
+
+# Session files
+sessions/
+
+# Logs
+*.log
+error_log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# PHP temporary files
+*.php~
+*.phps
+
+# Backup files
+*.bak
+*.backup
