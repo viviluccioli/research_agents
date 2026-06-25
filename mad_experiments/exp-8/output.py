@@ -15,7 +15,7 @@ drive.mount('/content/drive')
 API_KEY = userdata.get('GEMINI_API_KEY')
 client = genai.Client(api_key=API_KEY)
 
-OUTPUT_DIR = "/content/drive/MyDrive/SENIOR_YEAR/FED"
+OUTPUT_DIR = #file path here
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 ACTIVE_MODEL = "gemini-3.5-flash"
 
