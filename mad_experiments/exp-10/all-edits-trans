@@ -1,5 +1,67 @@
 Transcript with output from exp-9 adding context, strict schema enforcement, rephrasing insight definition, changing severity scores to be discrete, changing blocker and extensions to categorical variables, and adding rephrasal as another categorical variable to capture flaws related to overclaiming. 
 
+AI Expert:
+peer_review_outputs
+1
+100%
+{
+  "structural_strength": "The paper constructs a comprehensive, long-term dataset of the Federal Reserve's Beige Book spanning over 50 years (1970–2025) and systematically evaluates its predictive power for both national and regional economic activity against standard benchmarks like the yield spread, news sentiment, and professional forecasts.",
+  "domain_audit": "The primary methodological flaw in the machine learning pipeline is the preprocessing applied before running the FinBERT model. The authors state that they convert the text to lowercase, remove stop words, and stem/lemmatize the words so that 'increase,' 'increasing,' and 'increasingly' are treated as the same token. This is a traditional bag-of-words preprocessing pipeline. However, FinBERT is a transformer-based model (built on BERT) that relies on contextual embeddings and WordPiece tokenization. It requires intact, natural language sentences to function correctly. Removing stop words (which includes negations like 'not' or 'no') and stemming words destroys the syntactic structure, disrupts the attention mechanism, and can completely invert or distort the sentiment of the text (e.g., 'inflation is not increasing' becomes 'inflation increase'). Additionally, the authors do not define how the final 'FinBERT sentiment score' is calculated from the model's raw positive, negative, and neutral probability outputs.",
+  "primary_issue_class": "substantive_flaw",
+  "severity_score": 7.5,
+  "barrier_category": "REVISION",
+  "severity_rationale": "The preprocessing flaw directly affects the core independent variable (the FinBERT sentiment index) used in all regressions. While the results might still show some correlation due to the presence of key sentiment-carrying words, the sentiment extraction is theoretically invalid and noisy. Re-running the pipeline with proper raw text input is required to validate the paper's empirical claims, but this is fully repairable within the current framework.",
+  "novelty_claims": [
+    {
+      "claim_type": "empirical",
+      "description": "First paper to analyze the Beige Book over a 55-year span (1970-2025) and to show that regional sentiment helps nowcast regional GDP in a panel framework with spillover effects.",
+      "significance": "MEDIUM",
+      "confidence": 8.5,
+      "supporting_evidence": "Page 4: 'We also show that the Beige Book can shed light on regional economic activity as well, which the literature has not touched upon.'"
+    }
+  ],
+  "insight_assessment": {
+    "level": "MEDIUM",
+    "description": "The paper provides a clear narrative and useful economic intuition about the value of 'soft' anecdotal information in central bank communications, but the execution of the NLP and econometric models is somewhat mechanical.",
+    "supporting_evidence": "Section 5 and Section 6 present standard linear/logistic regressions and keyword counts to validate the usefulness of the text.",
+    "confidence": 8.0
+  },
+  "layman_translation": "The authors use a modern AI model (FinBERT) to read the Federal Reserve's 'Beige Book' reports and measure economic sentiment. However, before feeding the text into the AI, they cleaned it by removing common words (like 'not' or 'the') and shortening words to their roots. While this cleaning is common for older computer models, modern AI models need to read full, natural sentences to understand context. Removing words like 'not' can completely flip the meaning of a sentence (e.g., 'not growing' becomes 'growing'), which makes the AI's sentiment scores unreliable. The authors need to re-run their AI model on the original, uncleaned text.",
+  "confidence_score": 9.5,
+  "source_evidence": "Page 6: 'First, we do some basic text cleaning that follows the literature. We convert the text to lowercase and remove numbers and stop words... We then tokenize each word, such that words such as \"increase,\" \"increasing,\" and \"increasingly\" are all considered as providing the same sentiment. The second step we follow is to apply a model for sentiment scoring. Here we use the FinBERT model to calculate sentiment in the Beige Books.'",
+  "verdict": "REVISE"
+}
 
+Econometrician: 
+peer_review_outputs
+1
+100%
+{
+  "structural_strength": "The paper compiles a comprehensive 50-year dataset of Beige Book texts and applies a modern transformer-based sentiment model (FinBERT) to extract high-quality sentiment scores, which is a valuable empirical contribution to the literature on qualitative central bank communications.",
+  "domain_audit": "1. The 'Spillover' Claim and the Common Shock Confound (Table 6, Model 2): In Section 5.3, the authors claim that 'each district’s economic activity is also correlated with sentiment conveyed about all other districts separate from its own' (Page 3) and interpret this as 'substantial spillover effects' (Page 30). However, Model 2 in Table 6 drops Year Fixed Effects. Because of this, the variable 'Beige Book FinBERT sentiment (excl. Bank)' ($S_{-it}$) is highly collinear with the national business cycle. Since $S_{-it} = \\frac{12}{11} \\bar{S}_t - \\frac{1}{11} S_{it}$ (where $\\bar{S}_t$ is the national average sentiment), $S_{-it}$ is essentially a proxy for the national business cycle in year $t$. Any common national shock (e.g., the 2008 financial crisis or monetary policy changes) will simultaneously reduce GDP growth across all districts and lower the sentiment of all districts. Therefore, the positive and highly significant coefficient on $S_{-it}$ (3.085***) is not evidence of 'spillover effects' or 'propagation.' It is simply a reflection of the common national business cycle. To claim 'spillover,' one would need to control for national-level shocks (e.g., using Year FE), but doing so makes $S_{-it}$ perfectly collinear with the Year FE and the own-bank sentiment $S_{it}$. Thus, the 'spillover' effect is fundamentally unidentified in this framework.\n\n2. Inference and Standard Error Clustering in Panel Regressions (Table 6): The panel regressions in Table 6 use annual data for 12 Federal Reserve Districts over 22 years (2002–2023), yielding 264 observations. The paper does not mention clustering standard errors at the Reserve Bank (district) level or adjusting for spatial and serial correlation. Regional GDP growth and regional sentiment are highly likely to exhibit serial correlation within districts and spatial correlation across districts. Failing to cluster standard errors or use robust panel standard errors (e.g., Driscoll-Kraay) leads to severely understated standard errors and inflated t-statistics. Given that the coefficient on own-bank sentiment in Model 1 is only marginally significant (t-stat = 2.57), proper clustering or serial correlation adjustment is highly likely to render this coefficient statistically insignificant.\n\n3. Serial Correlation in Recession Forecasting (Tables 4 and 5): The recession nowcasting and forecasting models use logistic regressions where the dependent variable is a binary recession indicator. Recessions are highly persistent (consecutive quarters of 1s), which introduces severe serial correlation in the residuals. Standard logistic regression standard errors assume independent observations, which is violated here. The authors must use HAC (Newey-West) standard errors or bootstrap methods adapted for time-series to ensure that the statistical significance of the Beige Book sentiment is not overstated.\n\n4. Timing and Information Set Mismatch in Nowcasting (Table 1): The nowcasting model (Table 1) compares the Beige Book sentiment to the Survey of Professional Forecasters (SPF) nowcast. The authors note that the Beige Book sentiment is taken from the last observation in the quarter. However, the SPF nowcast is typically released in the middle of the second month of the quarter (e.g., mid-February for Q1). The last Beige Book of the quarter is typically released two weeks before the March/June/September/December FOMC meetings, which is usually in mid-to-late March/June/September/December. This gives the Beige Book sentiment a 1-to-1.5 month informational advantage over the SPF nowcast. Comparing them directly in a nowcasting regression without adjusting for this timing mismatch overstates the relative value of the Beige Book sentiment as a real-time indicator, as it incorporates a month of additional economic news that was unavailable to SPF forecasters when they made their predictions.",
+  "primary_issue_class": "substantive_flaw",
+  "severity_score": 7.0,
+  "barrier_category": "REVISION",
+  "severity_rationale": "The 'spillover' claim in the regional panel analysis is based on a model that omits year fixed effects, making the 'other districts' sentiment' variable a proxy for the common national business cycle rather than true spillovers. Furthermore, the panel regressions do not cluster standard errors, which likely inflates the statistical significance of the regional results. These issues can be resolved within the current data framework by re-estimating standard errors and correcting the interpretation of the panel results.",
+  "novelty_claims": [
+    {
+      "claim_type": "empirical",
+      "description": "Demonstrating that regional Beige Book sentiment explains regional GDP growth and that there are spillover effects across districts.",
+      "significance": "MEDIUM",
+      "confidence": 8.0,
+      "supporting_evidence": "We also show that the Beige Book can shed light on regional economic activity as well, which the literature has not touched upon."
+    }
+  ],
+  "insight_assessment": {
+    "level": "MEDIUM",
+    "description": "The paper provides a clear and intuitive narrative on how qualitative business intelligence can be quantified to nowcast and forecast macroeconomic variables, though it stumbles on the econometric interpretation of regional spillovers.",
+    "supporting_evidence": "This paper demonstrates that anecdotes matter—and matter substantially—for understanding macroeconomic conditions.",
+    "confidence": 8.0
+  },
+  "layman_translation": "The paper shows that the Federal Reserve's 'Beige Book' (a collection of informal economic reports from across the country) contains valuable information that can help predict recessions and economic growth. However, the authors' claim that economic conditions in one region 'spill over' to other regions is actually just a reflection of the overall national economy moving together, and their statistical tests do not properly account for the fact that economic trends in neighboring regions are naturally correlated.",
+  "confidence_score": 9.0,
+  "source_evidence": "In Specification (2), we also include the Beige Book sentiment of the 11 other Reserve Banks to see if the national Beige Book sentiment, excluding the particular Reserve Bank’s own sentiment, has a statistically significant reflection of regional economic activity after dropping the time fixed effects.",
+  "verdict": "REVISE"
+}
 
 
