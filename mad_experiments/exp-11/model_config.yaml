@@ -1,0 +1,45 @@
+# Model configuration for the GPT-5.6 Sol exp-11-8 baseline.
+#
+default_model: "gpt-5.6-sol"
+
+# Reasoning effort configuration (extended thinking / chain-of-thought)
+reasoning_effort:
+  enabled: true
+  level: "medium"
+  enable_for_rounds: [1, 2, 3]
+
+models:
+  selection:
+    model: null
+    temperature: 0.0
+
+  persona_1:
+    model: null
+    temperature: 0.0
+
+  persona_2:
+    model: null
+    temperature: 0.0
+
+  persona_3:
+    model: null
+    temperature: 0.0
+
+  debate_persona_1:
+    model: null
+    temperature: 0.35
+
+  debate_persona_2:
+    model: null
+    temperature: 0.35
+
+  debate_persona_3:
+    model: null
+    temperature: 0.35
+
+  editor:
+    model: null
+    temperature: 0.0
+
+# Persona-specific overrides are optional.
+persona_overrides: {}
