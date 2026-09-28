@@ -8,21 +8,17 @@ from collections import defaultdict
 from functools import partial
 from pathlib import Path
 from typing import Any
-
 import requests
 import typing_extensions as typing
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
-
 # Add this experiment's config directory to the import path.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "config"))
 
 from config import API_BASE, API_KEY, MODEL_PRIMARY
 from token_tracker import TokenTracker
 
-
 class NonRetryableAPIError(RuntimeError):
     """A 4xx request error that will not improve by repeating the same payload."""
-
 
 # Results are organized under an experiment-labeled base directory. Each script
 # invocation creates its own timestamped run subfolder so repeated runs never
@@ -39,7 +35,6 @@ except OSError:
     RESULTS_BASE_DIR = str(Path(__file__).resolve().parent / "results" / EXPERIMENT_NAME)
     os.makedirs(RESULTS_BASE_DIR, exist_ok=True)
 
-
 def make_run_dir(paper_path=None):
     """Create and return a fresh per-run subfolder under the experiment base dir."""
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -48,13 +43,11 @@ def make_run_dir(paper_path=None):
     os.makedirs(run_dir, exist_ok=True)
     return run_dir
 
-
 def set_output_dir(path):
     """Point all subsequent artifact writes at ``path`` (created if needed)."""
     global OUTPUT_DIR
     OUTPUT_DIR = path
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-
 
 # Default destination for imports / ad-hoc calls that don't create a run dir.
 # The CLI entry point overrides this with a dedicated per-run subfolder.
@@ -86,14 +79,9 @@ PERSONAS = (
 )
 VALID_PERSONAS = set(PERSONAS)
 
-# A deliberately differentiated compatibility map for older panel-selection
-# outputs that use qualitative labels rather than numeric weights.
+# deliberately differentiated map
 ROLE_WEIGHT_MAP = {"HIGH": 0.55, "MEDIUM": 0.30, "LOW": 0.15}
 
-# Severity is now numeric and separate from the categorical editorial barrier.
-# Severity answers: if true, how much damage does this critique do to the paper's
-# stated argument? The barrier category answers: what kind of editorial action is
-# required?
 CATEGORY_CAPS = {
     "BLOCKER": 1.00,
     "REVISION": 0.75,
@@ -102,37 +90,16 @@ CATEGORY_CAPS = {
     "EXTENSION": 0.10,
     "NONE": 0.00,
 }
-# MEDIUM is 0.62 (not 0.55) so a unanimous MEDIUM panel scores 0.62 and lands in
-# the MEDIUM consensus band (>=0.60). At 0.55 an all-MEDIUM panel fell into the
-# LOW band, making a genuine MEDIUM consensus unreachable without a HIGH vote.
+
 CONTRIBUTION_VALUES = {"HIGH": 1.00, "MEDIUM": 0.62, "LOW": 0.35, "NONE": 0.00}
-# --- Novelty count-based scoring (restores spread; see below) ---------------
-# The novelty sub-score used to be a weighted average over CONTRIBUTION_VALUES with a
-# MAX-claim-per-persona rule. Because almost every paper has at least one MEDIUM-worthy
-# claim, nearly every persona landed >= MEDIUM and the sub-score collapsed onto 0.62 for
-# most papers (novelty stopped discriminating; its tier correlation fell to ~0). We move
-# back to the exp-8 approach: count EVERY novelty claim across all personas by
-# significance (n_high/n_med/n_low) and build an additive, saturating sub-score. HIGH is
-# the uncapped spread lever; MED/LOW are capped so many weak claims cannot fake a strong
-# score. There is deliberately NO divide-by-total (division re-compresses to an average,
-# which is what killed the spread). A pure-MEDIUM paper now tops out ~0.45 instead of
-# 0.62, so HIGH claims are what carry a paper into the accept band. CONTRIBUTION_VALUES
-# stays intact: the insight dimension still uses it and did not collapse.
+
 NOVELTY_COUNT_FLOOR = 0.15
-NOVELTY_HIGH_BOOST = 0.30   # uncapped — the spread lever
+NOVELTY_HIGH_BOOST = 0.30  
 NOVELTY_MED_BOOST = 0.10
 NOVELTY_LOW_BOOST = 0.04
-NOVELTY_MED_CAP = 0.30      # ~3 medium claims
-NOVELTY_LOW_CAP = 0.12      # ~3 low claims
-# Verdicts are GRADES of the work's soundness, not imperatives about the manuscript.
-# The labels were renamed PASS/REVISE/FAIL -> ACCEPT/RESUBMIT/REJECT because "REVISE"
-# read as an instruction ("this needs revising") that every paper trivially satisfies,
-# so personas defaulted to it even when their own reasoning said the work was sound.
-# ACCEPT already means "accept with minor revisions", so a minor wording fix does NOT
-# justify dropping below ACCEPT. RESUBMIT (0.75, not 0.5) means "sound conditional on a
-# substantive fix or a substantial overclaim being narrowed"; at 0.5 a unanimous-RESUBMIT
-# panel capped raw execution at 0.5, and since execution is 60% of the final score a good
-# paper that drew all-RESUBMIT scored below a weak paper that happened to draw an ACCEPT.
+NOVELTY_MED_CAP = 0.30     
+NOVELTY_LOW_CAP = 0.12      
+
 VERDICT_VALUES = {"ACCEPT": 1.0, "RESUBMIT": 0.75, "REJECT": 0.0}
 
 ISSUE_CLASSES = {
@@ -522,20 +489,15 @@ Schema validation is STRICT. Wrong field names = crash."""
 
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 
-    # Number of in-place attempts to coax a parseable JSON object out of the model.
-    # Non-JSON calls make a single attempt; the outer @retry still covers transport errors.
     max_json_attempts = 3 if require_json else 1
     corrective_suffix = ""
     last_text = ""
 
     for json_attempt in range(max_json_attempts):
-        # Bump temperature on JSON-format retries so the re-prompt isn't a deterministic
-        # replay of the same markdown-instead-of-JSON output produced at temp 0.0.
         attempt_temp = temperature
         if json_attempt > 0:
             attempt_temp = min(1.0, max(temperature, 0.3) + 0.1 * (json_attempt - 1))
 
-        # Keep stable paper content first for OpenAI's automatic prompt caching.
         if cache_prefix:
             messages = [
                 {
@@ -555,12 +517,10 @@ Schema validation is STRICT. Wrong field names = crash."""
             "max_completion_tokens": 8192,
         }
 
-        # Only include temperature for non-Opus models (Opus doesn't support it)
         if not is_opus:
             payload["temperature"] = attempt_temp
 
-        # Always send an explicit GPT-5.6 reasoning baseline. Omitting this field
-        # would enable the model's default medium reasoning.
+        # Always send an explicit GPT-5.6 reasoning baseline.
         if reasoning_effort:
             payload["reasoning_effort"] = reasoning_effort
             if json_attempt == 0:  # Only print once per call
@@ -583,10 +543,8 @@ Schema validation is STRICT. Wrong field names = crash."""
                 usage = result.get("usage", {})
                 input_tokens = usage.get("prompt_tokens", 0)
                 output_tokens = usage.get("completion_tokens", 0)
-                # Extract reasoning tokens from nested structure
                 completion_details = usage.get("completion_tokens_details", {})
                 thinking_tokens = completion_details.get("reasoning_tokens", 0)
-                # OpenAI reports cached input inside prompt_tokens_details.
                 prompt_details = usage.get("prompt_tokens_details", {}) or {}
                 cache_read = prompt_details.get(
                     "cached_tokens", usage.get("cache_read_input_tokens", 0)
@@ -629,7 +587,6 @@ Schema validation is STRICT. Wrong field names = crash."""
         if not require_json:
             return text
 
-        # Validate that the response is a parseable JSON object before returning.
         try:
             parse_json_object(text, role=role)
             return text
@@ -690,33 +647,26 @@ async def call_llm_serial(
     )
     return await asyncio.to_thread(func)
 
-
 # ==========================================
 # NORMALIZATION AND INPUT VALIDATION
 # ==========================================
-
-
 def _safe_float(value: Any, default: float = 5.0) -> float:
     try:
         return max(0.0, min(10.0, float(value)))
     except (TypeError, ValueError):
         return default
 
-
 def _text(value: Any, default: str = "") -> str:
     if value is None:
         return default
     return str(value).strip() or default
 
-
+#Hopefully should be able to delete this, no? 
 def _normalize_verdict(value: Any, default: str = "RESUBMIT") -> str:
-    # Map legacy PASS/REVISE/FAIL onto the renamed ACCEPT/RESUBMIT/REJECT grades so old
-    # cached outputs and any model drift to the historical labels still parse.
     verdict = _text(value, default).upper()
     legacy = {"PASS": "ACCEPT", "REVISE": "RESUBMIT", "FAIL": "REJECT"}
     verdict = legacy.get(verdict, verdict)
     return verdict if verdict in VERDICT_VALUES else default
-
 
 def _normalize_level(value: Any, default: str = "NONE") -> str:
     level = _text(value, default).upper().replace("Δ-", "").replace("DELTA-", "")
@@ -730,9 +680,7 @@ def _normalize_level(value: Any, default: str = "NONE") -> str:
     }
     return aliases.get(level, default)
 
-
 def _legacy_severity_to_score(value: Any, default: float = 4.0) -> float:
-    """Convert older BLOCKER/MAJOR/MINOR or HIGH/MEDIUM/LOW labels into 1-10 severity."""
     if isinstance(value, (int, float)):
         return _safe_float(value, default)
     token = _text(value, "").upper().replace("Δ-", "").replace("DELTA-", "")
@@ -750,12 +698,10 @@ def _legacy_severity_to_score(value: Any, default: float = 4.0) -> float:
 
 
 def _normalize_severity_score(value: Any, default: float = 4.0) -> float:
-    """Normalize severity as argument damage on a 1-10 scale."""
     return _legacy_severity_to_score(value, default)
 
 
 def _severity_multiplier(score: Any) -> float:
-    """Map numeric severity into a smooth penalty multiplier."""
     s = _normalize_severity_score(score, 4.0)
     if s >= 9.0:
         return 0.30
@@ -1085,8 +1031,6 @@ def normalize_debate_schema(response_dict: Any) -> dict[str, Any]:
 # ==========================================
 # FORMATTERS
 # ==========================================
-
-
 def _format_novelty_claims(claims: list[dict[str, Any]] | None) -> str:
     if not claims:
         return "- None identified or no assessable novelty claim was supplied."
@@ -1099,7 +1043,6 @@ def _format_novelty_claims(claims: list[dict[str, Any]] | None) -> str:
         )
     return "\n".join(lines)
 
-
 def _format_insight(assessment: dict[str, Any] | None) -> str:
     assessment = assessment or {}
     return (
@@ -1108,12 +1051,9 @@ def _format_insight(assessment: dict[str, Any] | None) -> str:
         f"Evidence: {assessment.get('supporting_evidence', 'N/A')}"
     )
 
-
 # ==========================================
 # DEBATE-ADJUSTED DUNG-STYLE AGGREGATION
 # ==========================================
-
-
 def _initial_weights(personas: list[str], weights_dict: dict[str, Any] | None) -> dict[str, float]:
     weights_dict = weights_dict or {}
     numeric: dict[str, float] = {}
@@ -1128,7 +1068,6 @@ def _initial_weights(personas: list[str], weights_dict: dict[str, Any] | None) -
                 numeric[persona] = 0.0
 
     if sum(numeric.values()) <= 0:
-        # A clear 55/30/15 hierarchy is preferable to silently equal weighting.
         defaults = (0.55, 0.30, 0.15)
         numeric = {persona: defaults[index] if index < len(defaults) else 0.15 for index, persona in enumerate(personas)}
 
@@ -1444,8 +1383,6 @@ def _compute_review_components(
                     elif category == "REVISION" and severity_score >= 6.0 and confidence >= 7.0:
                         substantive_revision_barriers.append(node)
                 elif issue == "substantial_rephrasal":
-                    # Verdict-only: a central overclaim that must be narrowed. No execution
-                    # penalty and it does NOT trip the substantive-revision score cap.
                     substantial_rephrasal_revisions.append(node)
                 elif issue == "rephrasal" or category == "REPHRASAL":
                     rephrasal_revisions.append(node)

@@ -1,0 +1,2 @@
+# Install the local package; dependency declarations live in pyproject.toml.
+.

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "co-econ-exp12"
+version = "0.2.0"
+description = "Raw specialist assessments, versioned debate, and qualitative peer review"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "pydantic>=2.10,<3",
+  "requests>=2.32,<3",
+]
+
+[tool.setuptools]
+py-modules = ["schemas", "config", "token_tracker"]
+script-files = ["exp-12.py"]
