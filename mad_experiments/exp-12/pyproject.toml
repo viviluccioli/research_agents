@@ -14,5 +14,5 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["schemas", "config", "token_tracker"]
+py-modules = ["schemas", "config", "token_tracker", "retrieval"]
 script-files = ["exp-12.py"]

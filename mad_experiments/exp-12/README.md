@@ -13,8 +13,9 @@ persona weights, credibility adjustments, or publication-tier calibration.
 - `config.py`: the single default configuration and optional override loader.
 - `schemas.py`: validated output and saved-record contracts; JSON Schema generation.
 - `token_tracker.py`: per-attempt usage and optional cost accounting.
+- `retrieval.py`: mechanical manuscript chunks, deterministic queries and evidence selection.
 - `pyproject.toml`: installation and dependency declarations.
-- `tests/`: two offline test modules covering contracts, ledger and full workflow.
+- `tests/`: offline tests covering contracts, retrieval, ledger and full workflow.
 - `exp_12_instructions.md`: original research/architecture specification.
 - `exp_12_proposal.md`: now the changelog, including later decisions that supersede
   the original proposal. Its filename remains stable for existing links.
@@ -34,7 +35,7 @@ python exp-12.py --help
 ```
 
 `pip install -r requirements.txt` is an equivalent installation shortcut.
-The package installs the three helper modules and the `exp-12.py` command.
+The package installs the four helper modules and the `exp-12.py` command.
 Tests use a fake client and temporary output directories. They need no API key
 and make no network calls. Importing the modules creates no output directories.
 
@@ -75,6 +76,9 @@ override defaults. Example content:
 {
   "default_model": "your-model-id",
   "debate_rounds": 2,
+  "post_manuscript_context": "retrieved",
+  "retrieval_method": "lexical",
+  "retrieval_budget_characters": 12000,
   "stages": {"debate": {"temperature": 0.35}},
   "max_attempts": 3
 }
@@ -85,6 +89,43 @@ persona-specific settings. Pricing, if needed, is an optional model-keyed
 `pricing` object in settings with `input`, `output`, optional `cache_read` and
 `cache_write` rates per million tokens, plus a required descriptive `basis`.
 
+## POST manuscript evidence
+
+`post_manuscript_context` supports `retrieved` (default), `abstract_only` (the prior
+context shape), and `full_manuscript` (an ablation, still bounded by
+`manuscript_characters`). The abstract and complete frozen debate record remain available.
+
+Retrieval mechanically splits the original text at paragraph, sentence or word
+boundaries, without identifying semantic sections. Chunk IDs, exact character offsets,
+lengths and neighbors are preserved. Queries come from current active concerns,
+current-version challenges/defenses, and the reviewer's own PRE concerns and judgments.
+No extra review-model call generates queries or summarizes manuscript passages.
+
+The runnable default is lexical BM25. `embedding` and `hybrid` are available through
+an explicitly supplied `embedding_backend` argument to `run_review`. A backend must
+expose a stable nonempty `fingerprint` identifying its model/revision/settings and an
+`embed(texts)` method returning one finite, nonzero numeric vector per input. Use a
+deterministic backend. Exp-12 does not install or download an embedding model, reuse
+chat credentials for embeddings, or silently substitute lexical retrieval when a
+semantic backend is unavailable. Choosing an embedding model remains a separate decision.
+Runtime dependencies remain only pydantic and requests.
+
+BM25 and cosine rankings use deterministic reciprocal-rank fusion and stable chunk-ID
+tie breaking; selection suppresses near-duplicate word sets. Chunks have no overlap.
+The default chunk target is 1,600 characters (smaller for short manuscripts).
+`retrieval_budget_characters` defaults to 12,000 characters for the serialized evidence
+array, including provenance. Raw passage text also cannot exceed
+`retrieval_max_manuscript_fraction` of the manuscript (default 0.25). Selection keeps
+whole chunks; a chunk that cannot fit is skipped. Small budgets can therefore select
+no passages. These parameters are declared defaults, not tuned to external outcomes.
+
+Every POST has a `post-<persona>-evidence.json` trace with queries, rankings, selected
+text/offsets/order, budget, status, and the exact initial POST context hash/size.
+Selected passages are identical to the evidence in the request artifact. `EMPTY`
+retrieval is reported explicitly and POST can proceed with its existing abstract and
+ledger; `FAILED` retrieval prevents the POST call, records a null failed assessment,
+and marks the run PARTIAL. No peer POST response enters queries or evidence selection.
+
 ## Issue history and independence
 
 PRE sees the manuscript and only that reviewer's role/examples. It sees neither
@@ -92,6 +133,10 @@ peer PRE outputs nor the selection rationale. Every reviewer in a debate round
 sees the same frozen complete structured history. Outputs commit only after the
 round completes. POST uses the final debate snapshot and each reviewer's own PRE;
 it cannot see same-stage peer POST judgments.
+
+All specialists can assess all four novelty domains. Few-shot domain labels belong
+to the particular vignette; there is no persona-to-domain mapping. One example or issue
+can cover multiple domains. Unestablished domain judgments remain ABSTAIN.
 
 The engine generates IDs. Each issue starts at version 1. A substantive revision
 appends version 2, 3, etc. under the **same issue ID**, including revised statement,
@@ -125,8 +170,11 @@ Each invocation creates a unique run directory under the selected output root
 - `tokens.json` and `calls.json`: all attempts, including failed/retried responses.
 - Exact request/response artifacts, validated payloads, manuscript/abstract
   context, saved settings, frozen round snapshots, and stage checkpoints.
+- `prompt-configuration.json`: all realized persona/stage system prompts, schemas,
+  role profiles and examples; `run-metadata.json`: settings, effective models/rounds
+  and retrieval backend/algorithm identity; per-persona POST evidence traces.
 
-Code/prompt/manuscript hashes, available git commit, requested/sent settings,
+Code/prompt/schema/settings/manuscript hashes, available git commit, requested/sent settings,
 context lengths/truncation and raw errors are retained. Model-reported settings
 remain null when unavailable. Output artifacts contain manuscript text and reviews.
 
@@ -139,8 +187,8 @@ COMPLETE, PARTIAL, or FAILED; the CLI exits nonzero for partial/failed runs.
 
 The parser accepts bare JSON, JSON fences, and a balanced object inside brief
 prose. Validation checks both schemas and graph references during retries.
-Validation retries can increase temperature by 0.1 per attempt; actual sent
-values and usage are logged. HTTP 429/5xx errors are retryable; other HTTP errors
+Every retry retains the requested temperature; requested/sent values, retry kind,
+attempt number, errors and usage are logged. HTTP 429/5xx errors are retryable; other HTTP errors
 fail the call without repeatedly submitting the same rejected request.
 
 Full manuscript text is used for PRE up to the declared limit. Round 1 also gets
@@ -156,9 +204,9 @@ subtotal is explicitly partial. Raw provider responses are kept for audit.
 
 ## Acceptance status
 
-54 offline tests pass after the instruction-coverage audit recorded in the changelog.
-The initial integration wheel was built, inspected and installed in an isolated
-temporary location; its installed command completed a 14-call workflow using a fake client.
+78 offline tests pass, covering the instruction audit and finalization changes recorded
+in the changelog. The updated wheel, including retrieval, was built and installed in an
+isolated temporary location; its installed command completed a 14-call fake-client workflow.
 A live manuscript acceptance run still requires a chosen manuscript and
 configured endpoint/model. No benchmark or downstream calibration is included.
 Structural tests cannot establish the scholarly correctness of model judgments.

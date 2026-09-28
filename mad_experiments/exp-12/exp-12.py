@@ -22,6 +22,7 @@ from schemas import (
 )
 from config import ModelConfig
 from token_tracker import TokenTracker, utc_now
+from retrieval import RetrievalError, RetrievalIndex, build_queries
 
 from copy import deepcopy
 from dataclasses import dataclass
@@ -371,12 +372,12 @@ class Ledger:
         return response
 
 
-ARCHITECTURE_VERSION = "exp12-v2.1"
-PROMPT_VERSION = "exp12-core-v2.1"
+ARCHITECTURE_VERSION = "exp12-v2.2"
+PROMPT_VERSION = "exp12-core-v2.2"
 EXPERIMENT_NAME = "exp-12"
 
 ROLE_PROFILES = {
-    "Theorist": "Audit the internal consistency, economic meaning, equilibrium logic, comparative statics, and proofs of a claimed formal or descriptive mechanism.",
+    "Theorist": "Audit the internal consistency, economic/mathematical sophistication, equilibrium logic, comparative statics, and/or proofs of a claimed formal or descriptive mechanism.",
     "Econometrician": "Audit whether the empirical design supports the paper's stated causal or descriptive claim, including identification, estimands, selection, inference, and robustness appropriate to the claim.",
     "AI_Expert": "Audit whether machine-learning or AI systems answer the stated economic question, including leakage, validation, interpretability, target alignment, and reproducibility of model choices, or AI itself as a tool/subject of research.",
     "Data_Scientist": "Audit data provenance, construction, joins, labels, measurement, missingness, transformations, sampling, and leakage that could distort the paper's evidence. Particularly relevant when dataset has been created.",
@@ -472,7 +473,8 @@ REPAIR SCOPE
 One overall PRE/POST judgment about the work required, separate from conditional damage:
 0 no substantive repair; 1 local re-analysis/reframing within existing evidence;
 2 substantial work within current data/model/design;
-3 new core evidence/design/proof/model required; 4 effectively a different paper.
+3 new core evidence/design/proof/model required;
+4 effectively a different paper.
 Use status=ASSESSED with integer level and rationale, or status=ABSTAIN with a reason.
 No repair confidence. Severity, repair and verdict need not move together.
 
@@ -526,6 +528,8 @@ Unanswered and newly revised claims have not necessarily had a response opportun
 POST_PROMPT = """
 Independently reassess novelty_by_domain, insight, repair_scope, revision_path,
 verdict and assessment_rationale using the final debate snapshot and your own PRE.
+Use any supplied retrieved passages as manuscript evidence. They are a selected subset:
+absence from these passages is not evidence that something is absent from the paper.
 Do not see or predict other reviewers' POST responses.
 For every own active issue, give exactly one originator update with final stance and
 confidence; reassess severity via revised_issue if substance changed. Do not repeat
@@ -549,74 +553,73 @@ author_letter and revision_path. decisive_issue_ids must exist in the ledger.
 No mandated numerical decision, paper score, calibration, persona weight or invented evidence.
 """
 
-# Hypothetical teaching cases. No real-paper identities or borrowed citations.
-# Each tuple: scenario, issue type (None for sound work), damage, support, repair, verdict.
+# Optional final item: case-specific novelty judgments and domains of its issue.
+# A persona's expertise never assigns or restricts the domains it can assess.
 ROLE_EXAMPLE_CASES = {
     "Theorist": (
         ("The equilibrium satisfies all incentive conditions and the proof covers the stated assumptions.", None, None, None, 0, "ACCEPT"),
-        ("The comparative static holds only for interior solutions; a stated restriction preserves the main result.", "substantial_rephrasal", 4.5, 8.0, 1, "RESUBMIT"),
-        ("The claimed equilibrium violates the incentive condition that defines the central mechanism.", "substantive_flaw", 9.4, 9.0, 3, "REJECT")),
+        ("Key comparative statics hold only in overly restrictive environments and should be linked more strongly to testable implications", "substantial_rephrasal", 4.5, 8.0, 1, "RESUBMIT"),
+        ("The claimed equilibrium violates the incentive condition assumed for the central mechanism.", "substantive_flaw", 9.4, 9.0, 3, "REJECT")),
     "Econometrician": (
-        ("The design identifies its stated estimand and reports appropriate uncertainty and design checks.", None, None, None, 0, "ACCEPT"),
-        ("Inference ignores treatment-level dependence; corrected within-data inference is needed.", "substantive_flaw", 5.8, 7.5, 2, "RESUBMIT"),
-        ("The only identifying variation is perfectly confounded with selection, invalidating the central causal claim.", "substantive_flaw", 9.1, 8.7, 3, "REJECT")),
+        ("The design uses a sound identification strategy and reports appropriate uncertainty and design checks.", None, None, None, 0, "ACCEPT"),
+        ("Inference ignores treatment-level variation and should incorporate appropriate controls/fixed effects.", "substantive_flaw", 5.8, 7.5, 2, "RESUBMIT"),
+        ("The authors' empirical design is confounded by selection bias, invalidating the central causal claim.", "substantive_flaw", 9.1, 8.7, 3, "REJECT")),
     "AI_Expert": (
         ("Held-out evaluation separates subjects and time, matches the prediction target, and documents information availability.", None, None, None, 0, "ACCEPT"),
-        ("The evaluation target differs from the deployment target, limiting the claimed economic interpretation.", "substantial_rephrasal", 5.2, 7.0, 2, "RESUBMIT"),
+        ("The evaluation target differs from the deployment target slightly, limiting the claimed economic interpretation.", "substantial_rephrasal", 5.2, 7.0, 2, "RESUBMIT"),
         ("Realized outcomes enter training features, so outcome leakage invalidates the central prediction result.", "substantive_flaw", 9.6, 9.5, 3, "REJECT")),
     "Data_Scientist": (
-        ("The linkage is audited and measurement validation supports the studied population.", None, None, None, 0, "ACCEPT"),
-        ("Unexplained missingness may change a supporting subgroup result; sensitivity analysis within existing data is needed.", "substantive_flaw", 4.2, 4.8, 2, "RESUBMIT"),
-        ("A systematic join mismatch generates the paper's main pattern instead of the claimed economic relationship.", "substantive_flaw", 9.7, 9.2, 3, "REJECT")),
+        ("Dataset construction is audited and measurement validation supports the studied population, with replication avaliable publicly.", None, None, None, 0, "ACCEPT"),
+        ("Unexplained missingness may change a supporting subgroup result; sensitivity analysis within existing data is not reported.", "substantive_flaw", 4.2, 4.8, 2, "RESUBMIT"),
+        ("A systematic join mismatch generates the paper's main result instead of the claimed economic relationship.", "substantive_flaw", 9.7, 9.2, 3, "REJECT")),
     "CS_Expert": (
         ("The algorithm computes the claimed solution with feasible resources and documented convergence checks.", None, None, None, 0, "ACCEPT"),
         ("Sensitivity to numerical tolerance is undocumented for a supporting simulation result.", "substantive_flaw", 3.6, 4.5, 1, "RESUBMIT"),
         ("The core algorithm solves a different optimization problem from the one defining the paper's main result.", "substantive_flaw", 9.0, 8.8, 3, "REJECT")),
     "Visionary": (
-        ("The manuscript supports a useful bounded conceptual contribution without a paradigm-shift claim.", None, None, None, 0, "ACCEPT"),
-        ("A peripheral sentence calls a supported bounded advance field-transforming; the headline contribution survives correction.", "rephrasal", 2.5, 8.2, 1, "ACCEPT"),
-        ("The entire claimed conceptual distinction collapses under the paper's own definitions; no independent contribution remains.", "literature_dispute", 9.0, 8.4, 4, "REJECT")),
+        ("The manuscript supports a useful bounded conceptual contribution without a paradigm-shift claim.", None, None, None, 0, "ACCEPT",
+         {"novelty": {"theoretical": ("MEDIUM", "The vignette supports a bounded conceptual contribution.")}}),
+        ("Some introductory sentences overclaim a supported bounded advance as field-transforming; the headline contribution survives correction.", "rephrasal", 2.5, 8.2, 1, "ACCEPT"),
+        ("The entire claimed conceptual distinction collapses under the paper's own definitions; no independent contribution remains.", "literature_dispute", 9.0, 8.4, 4, "REJECT",
+         {"novelty": {"theoretical": ("NONE", "The claimed conceptual distinction does not hold.")},
+          "issue_domains": ["theoretical"]})),
     "Policymaker": (
         ("Recommendations match the evaluated intervention, institutional constraints and observed outcomes.", None, None, None, 0, "ACCEPT"),
         ("An implementation claim ignores a documented administrative capacity limit, but policy scope can be narrowed.", "substantial_rephrasal", 5.4, 7.8, 1, "RESUBMIT"),
-        ("A binding budget constraint eliminates the mechanism required for the paper's central policy claim.", "substantive_flaw", 8.9, 8.5, 3, "REJECT")),
+        ("A binding budget constraint eliminates the feasbility of the paper's central mechanism.", "substantive_flaw", 8.9, 8.5, 3, "REJECT")),
     "Ethicist": (
         ("The study documents appropriate protections, consent and accountability for its stated intervention.", None, None, None, 0, "ACCEPT"),
-        ("A material disclosure pathway lacks safeguards; its extent is uncertain and needs an audit and mitigation.", "substantive_flaw", 6.4, 4.0, 2, "RESUBMIT"),
-        ("The claimed safe intervention requires publishing identifiable sensitive records, contradicting its central safety premise.", "substantive_flaw", 9.2, 9.0, 4, "REJECT")),
+        ("The study's documentation of their treatment procedure lacks some safeguards and should be further audited/explained in the paper.", "substantive_flaw", 6.4, 4.0, 2, "RESUBMIT"),
+        ("The claimed intervention requires publishing personally identifiable information, contradicting its central safety premise.", "substantive_flaw", 9.2, 9.0, 4, "REJECT")),
     "Perspective": (
         ("Population claims match sample coverage and the reported subgroup estimates.", None, None, None, 0, "ACCEPT"),
         ("A secondary passage generalizes to an unmeasured subgroup while the main within-sample conclusion remains supported.", "rephrasal", 3.0, 8.0, 1, "ACCEPT"),
         ("The paper's own group-specific estimates show the income gap grows, contradicting its headline claim that the policy narrows it.", "substantive_flaw", 8.8, 9.4, 2, "RESUBMIT")),
     "Historian": (
         ("The manuscript's own cited literature supports its accurately bounded account of the contribution.", None, None, None, 0, "ACCEPT"),
-        ("A cited predecessor establishes part of the claimed novelty, but a useful empirical advance remains.", "literature_dispute", 4.8, 8.6, 1, "RESUBMIT"),
-        ("The manuscript's cited predecessor already establishes its sole claimed new result, leaving no independent contribution.", "literature_dispute", 9.3, 9.6, 4, "REJECT")),
-}
-EXAMPLE_DOMAIN = {
-    "Theorist": "theoretical", "Econometrician": "empirical", "AI_Expert": "methodological",
-    "Data_Scientist": "empirical", "CS_Expert": "methodological", "Visionary": "theoretical",
-    "Policymaker": "policy", "Ethicist": "policy", "Perspective": "empirical", "Historian": "theoretical",
+        ("A cited predecessor establishes the claimed methodological novelty, but a useful empirical advance remains.", "literature_dispute", 4.8, 8.6, 1, "RESUBMIT",
+         {"novelty": {"methodological": ("NONE", "The cited predecessor already establishes the method."),
+                      "empirical": ("MEDIUM", "A useful empirical advance remains in the vignette.")},
+          "issue_domains": ["methodological"]}),
+        ("The manuscript's cited predecessor already establishes its claimed method and empirical result, leaving no independent contribution.", "literature_dispute", 9.3, 9.6, 4, "REJECT",
+         {"novelty": {"methodological": ("NONE", "The cited predecessor already establishes the method."),
+                      "empirical": ("NONE", "The cited predecessor already establishes the empirical result.")},
+          "issue_domains": ["methodological", "empirical"]})),
 }
 
 
 def role_examples(role: str) -> list[dict]:
     """Expand compact teaching cases into complete, validated PRE payloads."""
     examples = []
-    for index, (scenario, kind, severity, confidence, repair, verdict) in enumerate(ROLE_EXAMPLE_CASES[role]):
+    for index, (scenario, kind, severity, confidence, repair, verdict, *details) in enumerate(ROLE_EXAMPLE_CASES[role]):
+        case = details[0] if details else {}
         evidence = {"kind": "MANUSCRIPT", "locator": "Hypothetical vignette", "support": scenario}
         novelty = {domain: {"level": "ABSTAIN", "reason": "This vignette does not establish novelty in this domain."}
                    for domain in ("methodological", "empirical", "theoretical", "policy")}
-        novelty[EXAMPLE_DOMAIN[role]] = {
-            "level": "NONE" if role in ("Historian", "Visionary") and index == 2 else "ABSTAIN",
-            **({"rationale": "The vignette establishes no distinct contribution.", "evidence": [evidence]}
-               if role in ("Historian", "Visionary") and index == 2
-               else {"reason": "Domain validity alone does not establish novelty; more positioning evidence is needed."}),
-        }
-        if index == 0 and role in ("Visionary", "Historian"):
-            novelty[EXAMPLE_DOMAIN[role]] = {"level": "MEDIUM", "rationale": "The vignette supports a bounded contribution.", "evidence": [evidence]}
+        for domain, (level, rationale) in case.get("novelty", {}).items():
+            novelty[domain] = {"level": level, "rationale": rationale, "evidence": [evidence]}
         issue = [] if kind is None else [{
-            "issue_type": kind, "novelty_domains": [EXAMPLE_DOMAIN[role]] if kind == "literature_dispute" else [],
+            "issue_type": kind, "novelty_domains": case.get("issue_domains", []),
             "technical_statement": scenario,
             "plain_language_statement": {
                 "Theorist": "The conclusion needs a narrower condition." if index == 1 else "The claimed equilibrium breaks its own rules.",
@@ -627,8 +630,8 @@ def role_examples(role: str) -> list[dict]:
                 "Visionary": "One sentence oversells the advance." if index == 1 else "The supposedly new distinction does not exist under the stated definitions.",
                 "Policymaker": "Implementation capacity limits where the policy works." if index == 1 else "The budget rule prevents the claimed policy mechanism.",
                 "Ethicist": "A disclosure risk needs safeguards." if index == 1 else "The intervention's safety claim depends on exposing sensitive identities.",
-                "Perspective": "One claim extends beyond the people studied." if index == 1 else "The paper says the gap shrank, but its table shows it grew.",
-                "Historian": "Some of the contribution is already in cited work." if index == 1 else "The cited prior paper already establishes the only claimed new result.",
+                "Perspective": "One claim extends beyond the people studied." if index == 1 else "Claims are shown to be heterogenous by subgroup, but suggested policies do not address findings.",
+                "Historian": "Some of the contribution is already in cited work." if index == 1 else "The cited prior paper already establishes the claimed method and empirical result.",
             }[role],
             "severity": severity, "severity_rationale": "Conditional damage follows the scope of the affected claim in the vignette.",
             "initial_confidence": confidence, "evidence": [evidence], "related_issue_ids": [],
@@ -857,8 +860,7 @@ class ReviewerCalls:
         call_id = f"C{self.call_counter:06d}"
         model = self.config.get_model(stage, default_override=self.model_override)
         temperature = self.config.get_temperature(stage)
-        schema_text = compact_json(output_json_schema(stage))
-        system = system + "\nReturn one JSON object matching this schema. No prose outside JSON.\n" + schema_text
+        system = system_with_schema(stage, system)
         messages = [{"role": "system", "content": system}, {"role": "user", "content": context}]
         # Fail rather than cut JSON, remove issues or silently drop history.
         if len(compact_json(messages)) > self.config.settings.max_context_characters:
@@ -868,7 +870,7 @@ class ReviewerCalls:
                                          reason=f"Context limit exceeded; unsent context preserved in {artifact.path}.")
         errors, retry_kind = [], "INITIAL"
         for attempt in range(1, self.config.settings.max_attempts + 1):
-            sent_temperature = min(1.0, temperature + 0.1 * (attempt - 1)) if retry_kind == "VALIDATION" else temperature
+            sent_temperature = temperature
             request = {"model": model, "messages": messages, "temperature": sent_temperature,
                        "reasoning_effort": "none", "max_tokens": self.config.settings.max_output_tokens}
             prompt = self.artifacts.context(
@@ -954,6 +956,24 @@ def stage_system(stage: str, persona=None) -> str:
     return result
 
 
+def system_with_schema(stage: str, system: str) -> str:
+    return system + "\nReturn one JSON object matching this schema. No prose outside JSON.\n" + compact_json(output_json_schema(stage))
+
+
+def prompt_configuration() -> dict:
+    """Hash the same realized system messages the call adapter actually sends."""
+    return {
+        "stages": {
+            stage: ({role: system_with_schema(stage, stage_system(stage, role))
+                     for role in sorted(ROLE_PROFILES)} if stage in ("PRE", "DEBATE", "POST")
+                    else system_with_schema(stage, stage_system(stage)))
+            for stage in sorted(MODEL_OUTPUT_SCHEMAS)
+        },
+        "role_profiles": dict(ROLE_PROFILES),
+        "few_shots": {role: role_examples(role) for role in sorted(ROLE_PROFILES)},
+    }
+
+
 def manuscript_context(text: str) -> str:
     # JSON escaping prevents manuscript-provided delimiter strings from ending this block.
     return compact_json({"untrusted_manuscript": text})
@@ -961,6 +981,45 @@ def manuscript_context(text: str) -> str:
 
 def bounded_manuscript(text: str, limit: int) -> tuple[str, bool]:
     return text[:limit], len(text) > limit
+
+
+def post_context(snapshot: Snapshot, own_pre: dict, abstract: dict, manuscript: str,
+                 settings, persona: str, index: RetrievalIndex) -> tuple[dict, dict]:
+    """Build all POST evidence from the frozen debate state, before any POST commits."""
+    frozen = snapshot.as_dict()
+    if frozen.get("post_assessments"):
+        raise GraphError("POST context must not contain POST assessments")
+    context = {"ledger": frozen, "own_pre": own_pre, "untrusted_abstract": abstract}
+    strategy = settings.post_manuscript_context
+    trace = {"persona": persona, "strategy": strategy, "status": "OK",
+             "manuscript_sha256": digest(manuscript), "snapshot_sha256": snapshot.sha256,
+             "truncated": False, "method": "final_debate_snapshot_and_own_pre"}
+    if strategy == "full_manuscript":
+        text, cut = bounded_manuscript(manuscript, settings.manuscript_characters)
+        context["untrusted_manuscript"] = text
+        trace.update(truncated=cut, method="manuscript_prefix" if cut else "full_manuscript",
+                     manuscript_start=0, manuscript_end=len(text), evidence_characters=len(text))
+    elif strategy == "retrieved":
+        queries = build_queries(frozen, own_pre)
+        try:
+            evidence = index.retrieve(
+                queries, method=settings.retrieval_method,
+                budget_characters=settings.retrieval_budget_characters,
+                max_manuscript_fraction=settings.retrieval_max_manuscript_fraction,
+            )
+        except RetrievalError as exc:
+            evidence = {"status": "FAILED", "error": str(exc), "queries": queries,
+                        "method": settings.retrieval_method, "selected_chunks": [],
+                        "budget_characters": settings.retrieval_budget_characters,
+                        "context_characters": 2, "evidence_characters": 0}
+        trace.update(evidence)
+        trace["retrieval_method"] = settings.retrieval_method
+        trace["method"] = "retrieved_manuscript_evidence"
+        context["untrusted_manuscript_evidence"] = evidence["selected_chunks"]
+        context["retrieval_status"] = evidence["status"]
+    trace["post_context_characters"] = len(compact_json(context))
+    trace["post_context_sha256"] = digest(compact_json(context))
+    return context, trace
 
 
 def editor_context(ledger: Ledger, post, abstract, manuscript) -> dict:
@@ -1039,7 +1098,7 @@ def render_report(result: RunResult, views: list[dict], tracker: TokenTracker) -
 
 
 def run_review(manuscript: str, *, client=None, config=None, output_dir=None,
-               rounds=None, model_override=None) -> RunResult:
+               rounds=None, model_override=None, embedding_backend=None) -> RunResult:
     """One traceable path. The injected client's complete(request) supports offline tests."""
     if not isinstance(manuscript, str) or not manuscript.strip():
         raise ValueError("A nonempty manuscript is required")
@@ -1058,7 +1117,18 @@ def run_review(manuscript: str, *, client=None, config=None, output_dir=None,
     started = utc_now()
     diagnostics = []
     partial_context = False
+    index = RetrievalIndex(manuscript, chunk_characters=config.settings.retrieval_chunk_characters,
+                           embedding_backend=embedding_backend)
+    run_metadata = {
+        "settings": config.snapshot(), "effective_rounds": rounds,
+        "effective_models": {stage: config.get_model(stage, default_override=model_override)
+                             for stage in MODEL_OUTPUT_SCHEMAS},
+        "retrieval": index.metadata(),
+    }
+    prompts = prompt_configuration()
     artifacts.write("settings.json", config.snapshot())
+    artifacts.write("run-metadata.json", run_metadata)
+    artifacts.write("prompt-configuration.json", prompts)
     artifacts.write("manuscript.txt", manuscript)
     abstract = extract_abstract(manuscript)
     abstract_artifact = artifacts.context("abstract.txt", abstract["text"],
@@ -1090,6 +1160,7 @@ def run_review(manuscript: str, *, client=None, config=None, output_dir=None,
     artifacts.write("checkpoint-pre.json", ledger.export())
     round_records = []
     post_records = []
+    post_context_artifacts = []
     if ledger.eligible_personas:
         for number in range(1, rounds + 1):
             snapshot = ledger.begin_round()
@@ -1131,13 +1202,25 @@ def run_review(manuscript: str, *, client=None, config=None, output_dir=None,
                 outcome = Outcome[PostAssessment](status="SKIPPED", payload=None, call_ids=[],
                                                    reason="No valid independent PRE assessment.")
             else:
-                context = compact_json({"ledger": snapshot.as_dict(), "own_pre": record.outcome.payload.model_dump(mode="json"),
-                                        "untrusted_abstract": abstract})
-                outcome = calls.call(
-                    "POST", stage_system("POST", persona), context, persona=persona, number=rounds + 1,
-                    validator=lambda payload, p=persona: ledger.validate_response(snapshot, p, payload),
-                    method="final_debate_snapshot_and_own_pre",
+                context, trace = post_context(
+                    snapshot, record.outcome.payload.model_dump(mode="json"), abstract,
+                    manuscript, config.settings, persona, index,
                 )
+                post_context_artifacts.append(artifacts.context(
+                    f"post-{persona}-evidence.json", compact_json(trace),
+                    truncated=trace["truncated"], method=trace["method"],
+                ))
+                if trace["status"] == "FAILED":
+                    outcome = Outcome[PostAssessment](status="FAILED", payload=None, call_ids=[],
+                                                       reason="Manuscript retrieval failed: " + trace["error"])
+                else:
+                    if trace["status"] == "EMPTY":
+                        diagnostics.append(f"{persona}: retrieval selected no manuscript passages; see saved evidence trace.")
+                    outcome = calls.call(
+                        "POST", stage_system("POST", persona), compact_json(context), persona=persona, number=rounds + 1,
+                        validator=lambda payload, p=persona: ledger.validate_response(snapshot, p, payload),
+                        truncated=trace["truncated"], method=trace["method"],
+                    )
             post_records.append(AssessmentRecord[PostAssessment](persona=persona, outcome=outcome))
         ledger.commit_post(snapshot, post_records)  # Independent POST, no peer POST leakage.
         artifacts.write("checkpoint-post.json", ledger.export())
@@ -1168,17 +1251,17 @@ def run_review(manuscript: str, *, client=None, config=None, output_dir=None,
     except (OSError, subprocess.CalledProcessError):
         revision = None
     data = ledger.export()
-    prompt_text = compact_json({stage: stage_system(stage) for stage in MODEL_OUTPUT_SCHEMAS})
-    prompt_text += compact_json({role: role_examples(role) for role in ROLE_PROFILES})
     # Hash the actual implementation, not just a commit that may omit untracked changes.
-    code_files = [Path(__file__)] + [Path(getfile(model)) for model in (ModelConfig, RunResult, TokenTracker)]
+    code_files = [Path(__file__)] + [Path(getfile(model)) for model in (ModelConfig, RunResult, TokenTracker, RetrievalIndex)]
     code_text = "\n".join(p.name + "\n" + p.read_text(encoding="utf-8") for p in code_files)
     result = RunResult(
         architecture_version=ARCHITECTURE_VERSION, schema_version=SCHEMA_VERSION, prompt_version=PROMPT_VERSION,
         run_id=run_id, status=status, code_commit=revision, code_sha256=digest(code_text),
-        prompt_sha256=digest(prompt_text), manuscript_sha256=digest(manuscript),
+        prompt_sha256=digest(compact_json(prompts)), manuscript_sha256=digest(manuscript),
+        settings_sha256=digest(compact_json(run_metadata)),
+        schema_sha256=digest(compact_json(RunResult.model_json_schema())),
         manuscript_characters=len(manuscript), started_at=started, finished_at=utc_now(),
-        rounds_requested=rounds, abstract=abstract_artifact, selection=selection,
+        rounds_requested=rounds, abstract=abstract_artifact, post_context_artifacts=post_context_artifacts, selection=selection,
         pre_assessments=pre_records, issues=data["issues"], issue_revisions=data["issue_revisions"],
         issue_updates=data["issue_updates"], arguments=data["arguments"], issue_links=data["issue_links"],
         rounds=round_records, post_assessments=post_records, editor=editor, calls=tracker.calls,

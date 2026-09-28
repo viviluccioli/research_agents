@@ -17,6 +17,76 @@ retained so existing links keep working. The design specification remains
   No separate approval is needed for each implementation step under that instruction.
 - After implementation, consolidate to the main architecture, one config, one token tracker,
   one schema module, one README, installation metadata, and focused tests. No new proposal files.
+- The later finalization directive permits one `retrieval.py` module for bounded POST
+  manuscript evidence. The user subsequently requested removal of the persona-to-novelty
+  domain mapping; domains now belong to individual examples and can span multiple fields.
+
+## Finalization changes — 2026-09-28
+
+Inspected the current main script, schemas, config and tests before editing. Conflicts
+with the attached directive were validation-retry temperature increases, incomplete
+persona-specific prompt hashing, and abstract-only POST grounding. The existing bounds,
+round snapshots and raw ledger semantics already matched the directive and remain intact.
+
+- Removed `EXAMPLE_DOMAIN`. All reviewers retain four novelty fields; illustrative
+  judgments/issue domains are declared per vignette, with ABSTAIN when the vignette does
+  not establish that domain. Historian examples now explicitly distinguish established
+  methodological contributions from empirical advances and illustrate multi-domain issues.
+  Existing user edits to role profiles and unrelated examples were preserved.
+- Every retry sends its original requested temperature. Attempt/error/usage/settings
+  telemetry and retry behavior otherwise remain unchanged.
+- Prompt hashing now includes realized SELECTION/EDITOR prompts, every persona's
+  PRE/DEBATE/POST system prompt, profiles, examples, and injected output schemas, through
+  the same schema-appending function used for actual requests. Canonical JSON ordering
+  makes the hash insensitive to dictionary order. The realized configuration is saved.
+- Added settings/schema hashes alongside existing code/manuscript/prompt/version IDs.
+  Effective rounds/models and retrieval algorithm/backend identity are saved in
+  `run-metadata.json`; `settings.json` retains the reusable configuration object.
+  Retrieval code is included in code hashing and the installable package.
+- Added `retrieved` (default), `abstract_only`, and bounded `full_manuscript` POST strategies.
+  PRE, round 1, later debate and editor manuscript exposure remain as before. Complete
+  structured histories and the global context guard remain intact.
+- Added deterministic mechanical chunks with exact offsets/IDs/neighbors; queries from
+  active current issues, current-version challenges/defenses and own PRE concerns/judgments;
+  lexical BM25, optional injected embedding retrieval, deterministic rank fusion, and
+  near-duplicate suppression. No section-name extraction, generated summaries or extra
+  review-model calls were introduced.
+- Default retrieved evidence is at most 12,000 serialized characters including metadata,
+  with raw passage text also capped at 25% of manuscript length. Chunk target defaults to
+  1,600 characters, reduced for short manuscripts. These are named configuration parameters,
+  not values tuned against paper outcomes. Whole chunks that do not fit are skipped.
+- Per-persona POST traces preserve queries, method rankings/scores, final selected raw text,
+  offsets/order, sizes, source/snapshot hashes and exact initial POST context hash. All POST
+  contexts derive from the same frozen debate snapshot; POST outputs commit only afterward.
+- Empty evidence is explicitly labeled EMPTY and diagnosed. Failed retrieval is saved as
+  FAILED and prevents that POST call, yielding a null failed assessment and a PARTIAL run.
+  No method substitution or invented evidence masks a missing backend or retrieval failure.
+- The only additional stage instruction tells POST to use retrieved passages as manuscript
+  evidence and not infer paper-wide absence from absence in the selected subset. Issue
+  semantics, severity/confidence scales, repair/verdict definitions and editor logic are unchanged.
+
+Remaining retrieval design choice: an embedding model/backend has not been selected.
+The runnable default is explicitly lexical BM25. Embedding and hybrid modes require an
+injected backend with stable model/revision/settings fingerprint and `embed(texts)`.
+No model download, new API credential, provider-specific adapter or runtime dependency was added.
+An optional question about choosing the embedding backend was sent during implementation.
+
+Files changed in this finalization pass:
+`exp-12.py`, `config.py`, `schemas.py`, `retrieval.py` (new), `pyproject.toml`,
+`tests/test_ledger.py`, `tests/test_retrieval.py` (new), `README.md`, and this changelog.
+Architecture/prompt versions are `exp12-v2.2` / `exp12-core-v2.2`; the saved-result schema
+is `exp12-v2.1` because it adds hashes and POST evidence-artifact references. Model-output
+contracts and the original `exp_12_instructions.md` remain unchanged.
+
+Validation: all 78 offline tests pass. Coverage includes fixed-temperature retries including repeated failures above temperature 1;
+every persona-specific PRE/DEBATE/POST prompt mutation changes the hash; dictionary
+ordering leaves it stable; saved prompts match actual requests; abstract-only context
+retains its former shape; evidence comes from exact source slices, obeys budgets and
+matches saved requests; no peer POST leakage; explicit backend/retrieval failures;
+all existing ledger invariants. Built and installed the updated wheel in a temporary
+directory without downloading dependencies; the installed command completed a 14-call
+fake-client workflow with three POST evidence artifacts. No live model calls or
+external-outcome calibration were performed.
 
 ## Completed before the current integration
 

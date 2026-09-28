@@ -441,14 +441,15 @@ class WorkflowTests(unittest.TestCase):
         abstract = architecture.extract_abstract("Title\nAbstract\nOnly the abstract.\n1 Introduction")
         self.assertEqual(abstract["text"].strip(), "Only the abstract.")
 
-    def run_case(self, client, **overrides):
+    def run_case(self, client, *, manuscript=None, embedding_backend=None, **overrides):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         config = ModelConfig(overrides={"default_model": "fixture-model", **overrides})
         # Any accidental use of the live adapter makes an offline test fail.
         with patch.object(architecture.ChatClient, "complete", side_effect=AssertionError("Unexpected HTTP")):
-            result = architecture.run_review("Abstract\nSynthetic manuscript with subgroup estimates.\n1 Introduction\nEvidence.",
-                                             client=client, config=config, output_dir=self.folder.name)
+            result = architecture.run_review(manuscript or "Abstract\nSynthetic manuscript with subgroup estimates.\n1 Introduction\nEvidence.",
+                                             client=client, config=config, output_dir=self.folder.name,
+                                             embedding_backend=embedding_backend)
         self.directory = Path(self.folder.name) / result.run_id
         saved = json.loads((self.directory / "result.json").read_text())
         self.assertEqual(saved, result.model_dump(mode="json"))
@@ -523,9 +524,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertIsNotNone(failures[0].usage)
         self.assertIsNone(failures[2].usage)
         retried = [c for c in result.calls if c.attempt == 2]
-        self.assertEqual(retried[0].sent_temperature, .1)
-        self.assertAlmostEqual(retried[1].sent_temperature, .45)
+        self.assertEqual(retried[0].sent_temperature, 0)
+        self.assertEqual(retried[1].sent_temperature, .35)
         self.assertEqual(retried[2].sent_temperature, 0)
+        self.assertTrue(all(c.sent_temperature == c.requested_temperature for c in result.calls))
         self.assertTrue((self.directory / failures[0].raw_response_path).exists())
         tokens = json.loads((self.directory / "tokens.json").read_text())
         self.assertEqual(tokens["summary"]["retry_count"], 3)
@@ -607,6 +609,139 @@ class WorkflowTests(unittest.TestCase):
             for example in examples:
                 PreAssessment.model_validate(example["response"])
             self.assertEqual(examples[0]["response"]["issues"], [])
+
+    def test_repeated_schema_retries_keep_temperature_above_one(self):
+        result = self.run_case(FakeClient(failures={("PRE", PANEL[0]): "schema"}),
+                               stages={"pre": {"temperature": 1.4}})
+        attempts = [c for c in result.calls if c.stage == "PRE" and c.persona == PANEL[0]]
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual([c.sent_temperature for c in attempts], [1.4, 1.4, 1.4])
+        self.assertEqual([c.retry_kind for c in attempts], ["INITIAL", "VALIDATION", "VALIDATION"])
+        self.assertTrue(all(c.errors for c in attempts))
+
+    def test_novelty_domains_belong_to_cases_and_can_span_domains(self):
+        self.assertFalse(hasattr(architecture, "EXAMPLE_DOMAIN"))
+        examples = architecture.role_examples("Historian")
+        middle = examples[1]["response"]
+        self.assertEqual(middle["novelty_by_domain"]["methodological"]["level"], "NONE")
+        self.assertEqual(middle["novelty_by_domain"]["empirical"]["level"], "MEDIUM")
+        self.assertEqual(middle["issues"][0]["novelty_domains"], ["methodological"])
+        self.assertEqual(examples[2]["response"]["issues"][0]["novelty_domains"], ["methodological", "empirical"])
+        # Reusing a teaching case under another persona never changes its domains.
+        with patch.dict(architecture.ROLE_EXAMPLE_CASES, {"Theorist": architecture.ROLE_EXAMPLE_CASES["Historian"]}):
+            reused = architecture.role_examples("Theorist")
+        for original, copied in zip(examples, reused):
+            self.assertEqual(original["response"]["novelty_by_domain"], copied["response"]["novelty_by_domain"])
+
+    def test_prompt_hash_covers_every_persona_stage_and_is_order_independent(self):
+        def fingerprint():
+            return architecture.digest(architecture.compact_json(architecture.prompt_configuration()))
+        baseline = fingerprint()
+        actual = architecture.stage_system
+        for stage in ("PRE", "DEBATE", "POST"):
+            for role in architecture.ROLE_PROFILES:
+                def changed(s, persona=None):
+                    return actual(s, persona) + ("\nChanged persona instruction." if (s, persona) == (stage, role) else "")
+                with self.subTest(stage=stage, role=role), patch.object(architecture, "stage_system", side_effect=changed):
+                    self.assertNotEqual(baseline, fingerprint())
+        with patch.object(architecture, "ROLE_PROFILES", dict(reversed(list(architecture.ROLE_PROFILES.items())))), \
+             patch.object(architecture, "MODEL_OUTPUT_SCHEMAS", dict(reversed(list(architecture.MODEL_OUTPUT_SCHEMAS.items())))):
+            self.assertEqual(baseline, fingerprint())
+        self.assertEqual(baseline, fingerprint())
+        examples = architecture.role_examples
+        def changed_example(role):
+            values = examples(role)
+            if role == "Historian":
+                values[0]["manuscript_vignette"] += " Changed example."
+            return values
+        with patch.object(architecture, "role_examples", side_effect=changed_example):
+            self.assertNotEqual(baseline, fingerprint())
+        schema = architecture.output_json_schema
+        with patch.object(architecture, "output_json_schema", side_effect=lambda stage: {**schema(stage), "description": "changed"}):
+            self.assertNotEqual(baseline, fingerprint())
+
+    def test_saved_prompt_configuration_matches_sent_systems(self):
+        result = self.run_case(FakeClient())
+        prompts = json.loads((self.directory / "prompt-configuration.json").read_text())
+        self.assertEqual(result.prompt_sha256, architecture.digest(architecture.compact_json(prompts)))
+        for call in result.calls:
+            request = json.loads((self.directory / call.request_context.path).read_text())
+            expected = prompts["stages"][call.stage]
+            if call.persona:
+                expected = expected[call.persona]
+            self.assertEqual(request["messages"][0]["content"], expected)
+
+    def test_abstract_only_keeps_original_post_context(self):
+        client = FakeClient()
+        result = self.run_case(client, post_manuscript_context="abstract_only")
+        snapshot = json.loads((self.directory / "post-snapshot.json").read_text())
+        for call in [c for c in result.calls if c.stage == "POST"]:
+            request = json.loads((self.directory / call.request_context.path).read_text())
+            context = json.loads(request["messages"][1]["content"])
+            self.assertEqual(set(context), {"ledger", "own_pre", "untrusted_abstract"})
+            self.assertEqual(context["ledger"], snapshot)
+            own_pre = next(p.outcome.payload for p in result.pre_assessments if p.persona == call.persona)
+            self.assertEqual(context["own_pre"], own_pre.model_dump(mode="json"))
+
+    def test_retrieved_post_provenance_matches_sent_passages_and_budget(self):
+        manuscript = "Abstract\nSynthetic manuscript.\n1 Introduction\n\n" + "\n\n".join(
+            f"Observation {i}. Subgroup estimates and the income gap support the mechanism claim. " * 10
+            for i in range(12))
+        result = self.run_case(FakeClient(), manuscript=manuscript, retrieval_budget_characters=2500)
+        self.assertEqual(len(result.post_context_artifacts), 3)
+        snapshot = json.loads((self.directory / "post-snapshot.json").read_text())
+        for call, artifact in zip([c for c in result.calls if c.stage == "POST"], result.post_context_artifacts):
+            request = json.loads((self.directory / call.request_context.path).read_text())
+            raw_context = request["messages"][1]["content"]
+            context = json.loads(raw_context)
+            trace = json.loads((self.directory / artifact.path).read_text())
+            self.assertNotIn("PRIVATE_POST", raw_context)
+            self.assertNotIn("PRIVATE_POST", json.dumps(trace))
+            self.assertEqual(context["ledger"], snapshot)
+            self.assertEqual(trace["post_context_sha256"], architecture.digest(raw_context))
+            self.assertEqual(trace["post_context_characters"], len(raw_context))
+            chunks = context["untrusted_manuscript_evidence"]
+            self.assertTrue(chunks)
+            self.assertEqual(chunks, trace["selected_chunks"])
+            self.assertLessEqual(len(architecture.compact_json(chunks)), 2500)
+            self.assertLessEqual(sum(len(c["text"]) for c in chunks), len(manuscript) // 4)
+            for chunk in chunks:
+                self.assertEqual(chunk["text"], manuscript[chunk["start"]:chunk["end"]])
+
+    def test_retrieval_failure_preserves_null_post_and_explicit_trace(self):
+        with patch.object(architecture.RetrievalIndex, "retrieve", side_effect=architecture.RetrievalError("Synthetic failure")):
+            result = self.run_case(FakeClient())
+        self.assertEqual(result.status, "PARTIAL")
+        self.assertFalse(any(c.stage == "POST" for c in result.calls))
+        for record, artifact in zip(result.post_assessments, result.post_context_artifacts):
+            self.assertEqual(record.outcome.status, "FAILED")
+            self.assertIsNone(record.outcome.payload)
+            trace = json.loads((self.directory / artifact.path).read_text())
+            self.assertEqual(trace["status"], "FAILED")
+            self.assertEqual(trace["selected_chunks"], [])
+            self.assertIn("Synthetic failure", trace["error"])
+
+    def test_missing_embedding_backend_never_silently_changes_method(self):
+        result = self.run_case(FakeClient(), retrieval_method="hybrid")
+        self.assertEqual(result.status, "PARTIAL")
+        for artifact in result.post_context_artifacts:
+            trace = json.loads((self.directory / artifact.path).read_text())
+            self.assertEqual(trace["status"], "FAILED")
+            self.assertEqual(trace["retrieval_method"], "hybrid")
+            self.assertEqual(trace["selected_chunks"], [])
+
+    def test_full_manuscript_ablation_retains_bound_and_settings_hash(self):
+        result = self.run_case(FakeClient(), post_manuscript_context="full_manuscript", manuscript_characters=20)
+        for call in [c for c in result.calls if c.stage == "POST"]:
+            request = json.loads((self.directory / call.request_context.path).read_text())
+            context = json.loads(request["messages"][1]["content"])
+            self.assertEqual(len(context["untrusted_manuscript"]), 20)
+            self.assertTrue(call.request_context.truncated)
+        metadata = json.loads((self.directory / "run-metadata.json").read_text())
+        self.assertEqual(result.settings_sha256, architecture.digest(architecture.compact_json(metadata)))
+        changed = deepcopy(metadata)
+        changed["settings"]["post_manuscript_context"] = "abstract_only"
+        self.assertNotEqual(result.settings_sha256, architecture.digest(architecture.compact_json(changed)))
 
 
 if __name__ == "__main__":

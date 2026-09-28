@@ -37,6 +37,11 @@ class Settings(Schema):
     manuscript_characters: int = Field(ge=1, default=180000)
     selection_characters: int = Field(ge=1, default=30000)
     editor_characters: int = Field(ge=1, default=40000)
+    post_manuscript_context: Literal["abstract_only", "retrieved", "full_manuscript"] = "retrieved"
+    retrieval_method: Literal["lexical", "embedding", "hybrid"] = "lexical"
+    retrieval_budget_characters: int = Field(ge=2, default=12000)
+    retrieval_chunk_characters: int = Field(ge=1, default=1600)
+    retrieval_max_manuscript_fraction: float = Field(gt=0, lt=1, default=0.25)
     pricing: dict[str, Pricing] = Field(default_factory=dict)
 
 

@@ -9,7 +9,7 @@ from typing import Annotated, Generic, Literal, Optional, TypeVar, Union
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-SCHEMA_VERSION = "exp12-v2"
+SCHEMA_VERSION = "exp12-v2.1"
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 IssueId = Annotated[str, StringConstraints(pattern=r"^I[0-9]{6,}$")]
 ArgumentId = Annotated[str, StringConstraints(pattern=r"^A[0-9]{6,}$")]
@@ -399,12 +399,15 @@ class RunResult(Schema):
     code_commit: Optional[Text]
     code_sha256: Text
     prompt_sha256: Text
+    settings_sha256: Text
+    schema_sha256: Text
     manuscript_sha256: Text
     manuscript_characters: NonnegativeInt
     started_at: Text
     finished_at: Text
     rounds_requested: NonnegativeInt
     abstract: Optional[ContextArtifact]
+    post_context_artifacts: list[ContextArtifact]
     selection: Outcome[SelectionOutput]
     pre_assessments: list[AssessmentRecord[PreAssessment]]
     issues: list[Issue]
